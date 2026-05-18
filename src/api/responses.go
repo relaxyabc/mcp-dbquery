@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 )
 
 // 错误代码定义
@@ -210,7 +211,7 @@ func RespondTimeout(w http.ResponseWriter, message string) {
 func RespondQueryTimeout(w http.ResponseWriter, timeout int) {
 	NewErrorResponseWithDetails(ErrCodeQueryTimeout,
 		"查询执行超时",
-		"超时设置: "+string(timeout)+"秒").WriteError(w, http.StatusGatewayTimeout)
+		"超时设置: "+strconv.Itoa(timeout)+"秒").WriteError(w, http.StatusGatewayTimeout)
 }
 
 // RespondConnectionError 返回连接错误响应
