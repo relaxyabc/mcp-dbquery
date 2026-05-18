@@ -52,7 +52,7 @@ func TestAPIKeyExpiration(t *testing.T) {
 	authManager := server.NewAuthManager()
 
 	// 创建带过期时间的密钥
-	expiredKey := server.NewAPIKey("expired-key-32-characters-minimum", "expired")
+	expiredKey := server.NewAPIKey("expired-key-32-characters-minimum-length", "expired")
 	expiredKey.WithExpiration(-1 * time.Hour) // 已过期
 
 	authManager.AddKey(expiredKey)
@@ -62,8 +62,8 @@ func TestAPIKeyExpiration(t *testing.T) {
 		t.Error("过期API密钥未被拒绝")
 	}
 
-	// 创建未过期密钥
-	validKey := server.NewAPIKey("valid-key-32-characters-minimum", "valid")
+	// 创建未过期密钥（至少32字符）
+	validKey := server.NewAPIKey("valid-key-32-characters-minimum-length", "valid")
 	validKey.WithExpiration(1 * time.Hour) // 1小时后过期
 
 	authManager.AddKey(validKey)

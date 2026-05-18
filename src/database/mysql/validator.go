@@ -46,6 +46,15 @@ func ValidateMySQLQuery(query string) error {
 		return fmt.Errorf("查询语句不能为空")
 	}
 
+	// 移除SQL注释（/* ... */ 和 -- 开头的行注释）
+	query = removeComments(query)
+
+	// 再次去除空白（注释可能位于开头）
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return fmt.Errorf("查询语句不能为空")
+	}
+
 	// 检查多语句查询（防止SQL注入）
 	if strings.Contains(query, ";") {
 		// 允许末尾的分号
@@ -109,6 +118,40 @@ func containsForbiddenOperations(query string) bool {
 	}
 
 	return false
+}
+
+// removeComments 移除SQL查询中的注释
+func removeComments(query string) string {
+	// 移除 /* ... */ 多行注释
+	result := query
+	for {
+		start := strings.Index(result, "/*")
+		if start == -1 {
+			break
+		}
+		end := strings.Index(result[start:], "*/")
+		if end == -1 {
+			// 未闭合的注释，移除注释开始后的所有内容
+			result = result[:start]
+			break
+		}
+		result = result[:start] + result[start+end+2:]
+	}
+
+	// 移除 -- 开头的单行注释
+	lines := strings.Split(result, "\n")
+	filteredLines := []string{}
+	for _, line := range lines {
+		// 找到 -- 注释位置（但要注意 -- 在字符串内的情况）
+		commentPos := strings.Index(line, "--")
+		if commentPos != -1 {
+			// 简化处理：假设 -- 后都是注释
+			line = line[:commentPos]
+		}
+		filteredLines = append(filteredLines, line)
+	}
+
+	return strings.Join(filteredLines, " ")
 }
 
 // IsReadOnlyQuery 快速判断查询是否为只读（简化版）

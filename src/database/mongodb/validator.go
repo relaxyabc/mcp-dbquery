@@ -9,14 +9,15 @@ import (
 
 // AllowedOperations MongoDB允许的操作（只读操作）
 // 宪章原则 I 要求：仅允许find、aggregate、listCollections、listIndexes
+// 注意：操作名称使用小写，与 ValidateMongoDBOperation 中的 strings.ToLower 保持一致
 var AllowedOperations = []string{
 	"find",            // 查询文档
 	"aggregate",       // 聚合查询
-	"listCollections", // 列出集合
-	"listIndexes",     // 列出索引
+	"listcollections", // 列出集合
+	"listindexes",     // 列出索引
 	"count",           // 计数（只读）
 	"distinct",        // 获取唯一值（只读）
-	"mapReduce",       // MapReduce（只读模式）
+	"mapreduce",       // MapReduce（只读模式）
 }
 
 // ForbiddenOperations MongoDB禁止的操作（修改操作）
