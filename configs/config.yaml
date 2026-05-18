@@ -1,0 +1,40 @@
+# MCP Database Query Tool Configuration
+
+server:
+  transport: stdio  # Transport mode: stdio (default) or http
+  host: 0.0.0.0     # HTTP listen host (only used for http transport)
+  port: 8080        # HTTP listen port (only used for http transport)
+  api_key: ${API_KEY}  # API key for HTTP transport (min 32 chars, ignored for stdio)
+
+logging:
+  level: info
+  mask_passwords: true  # ALWAYS true (constitution requirement)
+
+databases:
+  # Example MySQL connection
+  mysql-primary:
+    type: mysql
+    host: ${MYSQL_HOST}
+    port: 3306
+    username: ${MYSQL_USER}
+    password: ${MYSQL_PASSWORD}  # Environment variable
+    database: ${MYSQL_DATABASE}
+    tls_enabled: false
+    pool_size: 5
+    timeout: 30
+
+  # Example MongoDB connection
+  mongo-analytics:
+    type: mongodb
+    host: ${MONGO_HOST}
+    port: 27017
+    username: ${MONGO_USER}
+    password: ${MONGO_PASSWORD}  # Environment variable
+    database: ${MONGO_DATABASE}
+    pool_size: 5
+    timeout: 30
+
+# Query limits (enforced for safety)
+limits:
+  max_rows: 1000
+  query_timeout: 30
