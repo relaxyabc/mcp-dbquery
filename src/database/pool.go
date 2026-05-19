@@ -5,23 +5,43 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	// PostgreSQL驱动（静态注册）
+	_ "github.com/jackc/pgx/v5/pgxpool"
+	// SQLite驱动（静态注册）
+	_ "github.com/mattn/go-sqlite3"
 )
+
+// DriverConstructor 驱动构造函数签名
+type DriverConstructor func(config DatabaseConfig) Database
 
 // PoolManager 管理所有数据库连接池
 type PoolManager struct {
-	mysqlDrivers map[string]interface{} // MySQL驱动实例（实际为*mysql.MySQLDriver）
-	mongoDrivers map[string]interface{} // MongoDB驱动实例（实际为*mongodb.MongoDBDriver）
-	configs      map[string]DatabaseConfig // 连接配置缓存
-	mu           sync.RWMutex              // 读写锁保护并发访问
+	drivers     map[string]Database       // 所有驱动实例（按ID存储）
+	configs     map[string]DatabaseConfig // 连接配置缓存
+	registry    map[DatabaseType]DriverConstructor // 驱动注册表
+	mu          sync.RWMutex              // 读写锁保护并发访问
 }
 
 // NewPoolManager 创建新的连接池管理器
 func NewPoolManager() *PoolManager {
-	return &PoolManager{
-		mysqlDrivers: make(map[string]interface{}),
-		mongoDrivers: make(map[string]interface{}),
-		configs:      make(map[string]DatabaseConfig),
+	pm := &PoolManager{
+		drivers:  make(map[string]Database),
+		configs:  make(map[string]DatabaseConfig),
+		registry: make(map[DatabaseType]DriverConstructor),
 	}
+
+	// 驱动注册由外部调用RegisterDriver完成
+	// 参见 main.go 或各驱动包的 init() 函数
+
+	return pm
+}
+
+// RegisterDriver 注册数据库驱动构造函数
+func (pm *PoolManager) RegisterDriver(dbType DatabaseType, constructor DriverConstructor) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	pm.registry[dbType] = constructor
 }
 
 // RegisterConfig 注册数据库连接配置
@@ -49,33 +69,59 @@ func (pm *PoolManager) RegisterConfig(config DatabaseConfig) error {
 	return nil
 }
 
-// SetMySQLDriver 设置MySQL驱动实例（由外部调用）
-func (pm *PoolManager) SetMySQLDriver(id string, driver interface{}) {
+// GetOrCreatePool 获取或创建数据库驱动实例
+func (pm *PoolManager) GetOrCreatePool(ctx context.Context, id string) (Database, error) {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
-	pm.mysqlDrivers[id] = driver
+
+	// 检查已存在的驱动
+	if driver, exists := pm.drivers[id]; exists {
+		if driver.IsConnected() {
+			return driver, nil
+		}
+		// 连接断开，尝试重连
+		if err := driver.Connect(ctx); err != nil {
+			return nil, fmt.Errorf("重新连接失败: %s", err)
+		}
+		return driver, nil
+	}
+
+	// 获取配置
+	config, exists := pm.configs[id]
+	if !exists {
+		return nil, fmt.Errorf("连接配置 %s 不存在", id)
+	}
+
+	// 检测MySQL协议兼容数据库
+	dbType := config.Type
+	if config.ProtocolCompat != "" {
+		// protocol_compatible标记，使用MySQL驱动但配特定验证器
+		dbType = DatabaseTypeMySQL
+	}
+
+	// 获取驱动构造函数
+	constructor, exists := pm.registry[dbType]
+	if !exists {
+		return nil, fmt.Errorf("数据库类型 %s 未注册驱动", dbType)
+	}
+
+	// 创建驱动实例
+	driver := constructor(config)
+
+	// 建立连接
+	if err := driver.Connect(ctx); err != nil {
+		return nil, fmt.Errorf("连接失败: %s", err)
+	}
+
+	pm.drivers[id] = driver
+	return driver, nil
 }
 
-// SetMongoDriver 设置MongoDB驱动实例（由外部调用）
-func (pm *PoolManager) SetMongoDriver(id string, driver interface{}) {
-	pm.mu.Lock()
-	defer pm.mu.Unlock()
-	pm.mongoDrivers[id] = driver
-}
-
-// GetMySQLDriver 获取MySQL驱动实例
-func (pm *PoolManager) GetMySQLDriver(id string) (interface{}, bool) {
+// GetDriver 获取已创建的驱动实例
+func (pm *PoolManager) GetDriver(id string) (Database, bool) {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
-	driver, exists := pm.mysqlDrivers[id]
-	return driver, exists
-}
-
-// GetMongoDriver 获取MongoDB驱动实例
-func (pm *PoolManager) GetMongoDriver(id string) (interface{}, bool) {
-	pm.mu.RLock()
-	defer pm.mu.RUnlock()
-	driver, exists := pm.mongoDrivers[id]
+	driver, exists := pm.drivers[id]
 	return driver, exists
 }
 
@@ -106,21 +152,9 @@ func (pm *PoolManager) CloseAll(ctx context.Context) error {
 
 	var errors []string
 
-	// 关闭MySQL连接
-	for id, driver := range pm.mysqlDrivers {
-		if d, ok := driver.(Database); ok {
-			if err := d.Close(ctx); err != nil {
-				errors = append(errors, fmt.Sprintf("MySQL %s: %s", id, err))
-			}
-		}
-	}
-
-	// 关闭MongoDB连接
-	for id, driver := range pm.mongoDrivers {
-		if d, ok := driver.(Database); ok {
-			if err := d.Close(ctx); err != nil {
-				errors = append(errors, fmt.Sprintf("MongoDB %s: %s", id, err))
-			}
+	for id, driver := range pm.drivers {
+		if err := driver.Close(ctx); err != nil {
+			errors = append(errors, fmt.Sprintf("%s: %s", id, err))
 		}
 	}
 
@@ -137,36 +171,26 @@ func (pm *PoolManager) GetPoolStatus() map[string]interface{} {
 	defer pm.mu.RUnlock()
 
 	status := make(map[string]interface{})
+	driverStatus := make(map[string]string)
 
-	mysqlStatus := make(map[string]string)
-	for id, driver := range pm.mysqlDrivers {
-		if d, ok := driver.(Database); ok {
-			if d.IsConnected() {
-				mysqlStatus[id] = "connected"
-			} else {
-				mysqlStatus[id] = "disconnected"
-			}
+	for id, driver := range pm.drivers {
+		if driver.IsConnected() {
+			driverStatus[id] = "connected"
 		} else {
-			mysqlStatus[id] = "not_initialized"
+			driverStatus[id] = "disconnected"
 		}
 	}
 
-	mongoStatus := make(map[string]string)
-	for id, driver := range pm.mongoDrivers {
-		if d, ok := driver.(Database); ok {
-			if d.IsConnected() {
-				mongoStatus[id] = "connected"
-			} else {
-				mongoStatus[id] = "disconnected"
-			}
-		} else {
-			mongoStatus[id] = "not_initialized"
+	// 添加未初始化的配置
+	for id := range pm.configs {
+		if _, exists := pm.drivers[id]; !exists {
+			driverStatus[id] = "not_initialized"
 		}
 	}
 
-	status["mysql"] = mysqlStatus
-	status["mongodb"] = mongoStatus
-	status["total_connections"] = len(pm.mysqlDrivers) + len(pm.mongoDrivers)
+	status["drivers"] = driverStatus
+	status["total_connections"] = len(pm.drivers)
+	status["registered_types"] = len(pm.registry)
 
 	return status
 }
@@ -174,4 +198,60 @@ func (pm *PoolManager) GetPoolStatus() map[string]interface{} {
 // EnforceTimeout 强制执行查询超时（通过context）
 func (pm *PoolManager) EnforceTimeout(ctx context.Context, timeoutSeconds int) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(ctx, time.Duration(timeoutSeconds)*time.Second)
+}
+
+// IsMySQLProtocolCompatible 检查数据库类型是否为MySQL协议兼容
+func IsMySQLProtocolCompatible(dbType DatabaseType) bool {
+	switch dbType {
+	case DatabaseTypeClickHouse, DatabaseTypeDoris, DatabaseTypeMariaDB, DatabaseTypeTiDB:
+		return true
+	default:
+		return false
+	}
+}
+
+// GetActualDriverType 获取实际使用的驱动类型（处理协议兼容）
+func GetActualDriverType(config DatabaseConfig) DatabaseType {
+	if config.ProtocolCompat != "" {
+		return DatabaseTypeMySQL
+	}
+	// MySQL协议兼容但无protocol_compatible标记的，也使用MySQL驱动
+	if IsMySQLProtocolCompatible(config.Type) {
+		return DatabaseTypeMySQL
+	}
+	return config.Type
+}
+
+// SetMySQLDriver 设置MySQL驱动实例（向后兼容，由外部调用）
+func (pm *PoolManager) SetMySQLDriver(id string, driver interface{}) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	if d, ok := driver.(Database); ok {
+		pm.drivers[id] = d
+	}
+}
+
+// SetMongoDriver 设置MongoDB驱动实例（向后兼容，由外部调用）
+func (pm *PoolManager) SetMongoDriver(id string, driver interface{}) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	if d, ok := driver.(Database); ok {
+		pm.drivers[id] = d
+	}
+}
+
+// GetMySQLDriver 获取MySQL驱动实例（向后兼容）
+func (pm *PoolManager) GetMySQLDriver(id string) (interface{}, bool) {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+	driver, exists := pm.drivers[id]
+	return driver, exists
+}
+
+// GetMongoDriver 获取MongoDB驱动实例（向后兼容）
+func (pm *PoolManager) GetMongoDriver(id string) (interface{}, bool) {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+	driver, exists := pm.drivers[id]
+	return driver, exists
 }

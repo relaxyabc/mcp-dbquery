@@ -9,8 +9,16 @@ import (
 type DatabaseType string
 
 const (
-	DatabaseTypeMySQL   DatabaseType = "mysql"   // MySQL数据库
-	DatabaseTypeMongoDB DatabaseType = "mongodb" // MongoDB数据库
+	DatabaseTypeMySQL       DatabaseType = "mysql"       // MySQL数据库
+	DatabaseTypeMongoDB     DatabaseType = "mongodb"     // MongoDB数据库
+	DatabaseTypePostgreSQL  DatabaseType = "postgres"    // PostgreSQL数据库
+	DatabaseTypeSQLite      DatabaseType = "sqlite"      // SQLite数据库
+	DatabaseTypeSQLServer   DatabaseType = "sqlserver"   // SQL Server数据库
+	DatabaseTypeOracle      DatabaseType = "oracle"      // Oracle数据库
+	DatabaseTypeClickHouse  DatabaseType = "clickhouse"  // ClickHouse数据库 (MySQL协议兼容)
+	DatabaseTypeDoris       DatabaseType = "doris"       // Doris数据库 (MySQL协议兼容)
+	DatabaseTypeMariaDB     DatabaseType = "mariadb"     // MariaDB数据库 (MySQL兼容)
+	DatabaseTypeTiDB        DatabaseType = "tidb"        // TiDB数据库 (MySQL兼容)
 )
 
 // Database 接口定义所有数据库类型的通用操作
@@ -48,19 +56,21 @@ type Database interface {
 
 // DatabaseConfig 数据库连接配置
 type DatabaseConfig struct {
-	ID            string       `yaml:"id"`             // 连接标识符（用于池管理）
-	Type          DatabaseType `yaml:"type"`           // 数据库类型
-	Host          string       `yaml:"host"`           // 数据库服务器地址
-	Port          int          `yaml:"port"`           // 数据库服务器端口
-	Username      string       `yaml:"username"`       // 认证用户名
-	Password      string       `yaml:"password"`       // 认证密码（日志中必须遮蔽）
-	Database      string       `yaml:"database"`       // 数据库名称
-	TLSEnabled    bool         `yaml:"tls_enabled"`    // 是否启用TLS连接
-	PoolSize      int          `yaml:"pool_size"`      // 连接池大小
-	Timeout       int          `yaml:"timeout"`        // 连接超时时间（秒）
-	AuthSource    string       `yaml:"auth_source"`    // MongoDB认证源数据库（默认admin）
-	AuthMechanism string       `yaml:"auth_mechanism"` // MongoDB认证机制（SCRAM-SHA-1/SCRAM-SHA-256）
-	ReplicaSet    string       `yaml:"replica_set"`    // MongoDB副本集名称
+	ID               string       `yaml:"id"`               // 连接标识符（用于池管理）
+	Type             DatabaseType `yaml:"type"`             // 数据库类型
+	Host             string       `yaml:"host"`             // 数据库服务器地址
+	Port             int          `yaml:"port"`             // 数据库服务器端口
+	Username         string       `yaml:"username"`         // 认证用户名
+	Password         string       `yaml:"password"`         // 认证密码（日志中必须遮蔽）
+	Database         string       `yaml:"database"`         // 数据库名称
+	Path             string       `yaml:"path"`             // SQLite文件路径（仅SQLite使用）
+	TLSEnabled       bool         `yaml:"tls_enabled"`      // 是否启用TLS连接
+	PoolSize         int          `yaml:"pool_size"`        // 连接池大小
+	Timeout          int          `yaml:"timeout"`          // 连接超时时间（秒）
+	AuthSource       string       `yaml:"auth_source"`      // MongoDB认证源数据库（默认admin）
+	AuthMechanism    string       `yaml:"auth_mechanism"`   // MongoDB认证机制（SCRAM-SHA-1/SCRAM-SHA-256）
+	ReplicaSet       string       `yaml:"replica_set"`      // MongoDB副本集名称
+	ProtocolCompat   string       `yaml:"protocol_compatible"` // MySQL协议兼容标记（clickhouse, doris等复用MySQL驱动）
 }
 
 // ConnectionState 表示数据库连接状态

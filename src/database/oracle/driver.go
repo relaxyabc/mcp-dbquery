@@ -1,4 +1,4 @@
-package mysql
+package oracle
 
 import (
 	"context"
@@ -6,71 +6,55 @@ import (
 	"fmt"
 	"time"
 
-	_ "github.com/go-sql-driver/mysql" // MySQL驱动
+	go_ora "github.com/sijms/go-ora/v2" // Oracle驱动连接字符串构建
 
 	"github.com/relaxyabc/mcp-dbquery/src/database"
 	"github.com/relaxyabc/mcp-dbquery/src/utils"
 )
 
-// MySQLDriver MySQL数据库驱动实现
-type MySQLDriver struct {
-	ID        string
-	Config    database.DatabaseConfig
-	DB        *sql.DB
-	State     database.ConnectionState
-	validator func(query string) error // 自定义验证器（用于MySQL协议兼容数据库）
+// OracleDriver Oracle数据库驱动实现
+type OracleDriver struct {
+	ID     string
+	Config database.DatabaseConfig
+	DB     *sql.DB
+	State  database.ConnectionState
 }
 
-// QueryValidator 查询验证器函数签名
-type QueryValidator func(query string) error
-
-// NewMySQLDriver 创建MySQL驱动实例
-func NewMySQLDriver(config database.DatabaseConfig) *MySQLDriver {
-	return &MySQLDriver{
+// NewOracleDriver 创建Oracle驱动实例
+func NewOracleDriver(config database.DatabaseConfig) *OracleDriver {
+	return &OracleDriver{
 		ID:     config.ID,
 		Config: config,
 		State:  database.StateDisconnected,
-		validator: ValidateMySQLQuery, // 默认使用MySQL验证器
 	}
 }
 
-// NewMySQLDriverWithValidator 创建MySQL驱动实例（带自定义验证器）
-// 用于MySQL协议兼容数据库（ClickHouse, Doris等）
-func NewMySQLDriverWithValidator(config database.DatabaseConfig, validator QueryValidator) *MySQLDriver {
-	return &MySQLDriver{
-		ID:        config.ID,
-		Config:    config,
-		State:     database.StateDisconnected,
-		validator: validator,
-	}
-}
-
-// Connect 建立MySQL连接
-func (d *MySQLDriver) Connect(ctx context.Context) error {
+// Connect 建立Oracle连接
+func (d *OracleDriver) Connect(ctx context.Context) error {
 	d.State = database.StateConnecting
 	utils.GlobalLogger.LogConnection(d.ID, d.GetMaskedConnectionString(), "connecting")
 
 	// 构建连接字符串
 	connStr := d.buildConnectionString()
 
-	// 打开连接
-	db, err := sql.Open("mysql", connStr)
+	// 打开数据库连接
+	db, err := sql.Open("oracle", connStr)
 	if err != nil {
 		d.State = database.StateError
-		utils.GlobalLogger.LogError("CONNECTION_ERROR", "MySQL连接失败", err.Error())
-		return fmt.Errorf("MySQL连接失败: %s", err)
+		utils.GlobalLogger.LogError("CONNECTION_ERROR", "Oracle连接打开失败", err.Error())
+		return fmt.Errorf("Oracle连接打开失败: %s", err)
 	}
 
 	// 配置连接池
 	db.SetMaxOpenConns(d.Config.PoolSize)
-	db.SetMaxIdleConns(d.Config.PoolSize)
+	db.SetMaxIdleConns(d.Config.PoolSize / 2)
 	db.SetConnMaxLifetime(time.Duration(d.Config.Timeout) * time.Second)
 
 	// 测试连接
 	if err := db.PingContext(ctx); err != nil {
 		d.State = database.StateError
-		utils.GlobalLogger.LogError("CONNECTION_ERROR", "MySQL连接测试失败", err.Error())
-		return fmt.Errorf("MySQL连接测试失败: %s", err)
+		utils.GlobalLogger.LogError("CONNECTION_ERROR", "Oracle连接测试失败", err.Error())
+		return fmt.Errorf("Oracle连接测试失败: %s", err)
 	}
 
 	d.DB = db
@@ -80,8 +64,8 @@ func (d *MySQLDriver) Connect(ctx context.Context) error {
 	return nil
 }
 
-// Close 关闭MySQL连接
-func (d *MySQLDriver) Close(ctx context.Context) error {
+// Close 关闭Oracle连接
+func (d *OracleDriver) Close(ctx context.Context) error {
 	if d.DB == nil {
 		return nil
 	}
@@ -90,7 +74,7 @@ func (d *MySQLDriver) Close(ctx context.Context) error {
 	utils.GlobalLogger.LogConnection(d.ID, d.GetMaskedConnectionString(), "closing")
 
 	if err := d.DB.Close(); err != nil {
-		utils.GlobalLogger.LogError("CONNECTION_ERROR", "MySQL连接关闭失败", err.Error())
+		utils.GlobalLogger.LogError("CLOSE_ERROR", "Oracle连接关闭失败", err.Error())
 		return err
 	}
 
@@ -100,7 +84,7 @@ func (d *MySQLDriver) Close(ctx context.Context) error {
 }
 
 // IsConnected 检查连接状态
-func (d *MySQLDriver) IsConnected() bool {
+func (d *OracleDriver) IsConnected() bool {
 	if d.DB == nil {
 		return false
 	}
@@ -112,17 +96,17 @@ func (d *MySQLDriver) IsConnected() bool {
 }
 
 // GetType 返回数据库类型
-func (d *MySQLDriver) GetType() database.DatabaseType {
-	return database.DatabaseTypeMySQL
+func (d *OracleDriver) GetType() database.DatabaseType {
+	return database.DatabaseTypeOracle
 }
 
 // GetID 返回连接标识符
-func (d *MySQLDriver) GetID() string {
+func (d *OracleDriver) GetID() string {
 	return d.ID
 }
 
 // ExecuteQuery 执行只读查询
-func (d *MySQLDriver) ExecuteQuery(ctx context.Context, query string, limit int, timeout time.Duration) (*database.QueryResult, error) {
+func (d *OracleDriver) ExecuteQuery(ctx context.Context, query string, limit int, timeout time.Duration) (*database.QueryResult, error) {
 	start := time.Now()
 
 	// 验证查询是否为只读
@@ -144,7 +128,7 @@ func (d *MySQLDriver) ExecuteQuery(ctx context.Context, query string, limit int,
 	// 获取列信息
 	columns, err := rows.Columns()
 	if err != nil {
-		return database.NewErrorResult(d.ID, "QUERY_ERROR", "无法获取列信息"), err
+		return database.NewErrorResult(d.ID, "QUERY_ERROR", fmt.Sprintf("获取列信息失败: %s", err)), err
 	}
 
 	// 读取数据
@@ -168,8 +152,8 @@ func (d *MySQLDriver) ExecuteQuery(ctx context.Context, query string, limit int,
 		// 转换为map
 		rowMap := make(map[string]interface{})
 		for i, col := range columns {
-			// 处理NULL值和字节切片
 			val := values[i]
+			// 处理NULL值和字节切片
 			if b, ok := val.([]byte); ok {
 				rowMap[col] = string(b)
 			} else if val == nil {
@@ -202,44 +186,50 @@ func (d *MySQLDriver) ExecuteQuery(ctx context.Context, query string, limit int,
 	return database.NewQueryResult(d.ID, data, resultType, executionTime), nil
 }
 
-// ValidateQuery 验证查询是否为只读（宪章要求：严格只读）
-func (d *MySQLDriver) ValidateQuery(query string) error {
-	if d.validator != nil {
-		return d.validator(query)
-	}
-	return ValidateMySQLQuery(query)
+// ValidateQuery 验证查询是否为只读
+func (d *OracleDriver) ValidateQuery(query string) error {
+	return ValidateOracleQuery(query)
 }
 
-// buildConnectionString 构建MySQL连接字符串（内部使用）
-func (d *MySQLDriver) buildConnectionString() string {
-	tlsParam := ""
-	if d.Config.TLSEnabled {
-		tlsParam = "?tls=true"
+// buildConnectionString 构建Oracle连接字符串（使用go-ora）
+func (d *OracleDriver) buildConnectionString() string {
+	// 使用go-ora v2构建连接字符串
+	// 格式：oracle://user:password@host:port/service_name
+
+	options := map[string]string{}
+
+	// 如果配置中有SID而不是Service Name
+	if d.Config.AuthSource != "" {
+		options["SID"] = d.Config.AuthSource
 	}
 
-	return fmt.Sprintf("%s:%s@tcp(%s:%d)/%s%s",
-		d.Config.Username, d.Config.Password,
-		d.Config.Host, d.Config.Port,
-		d.Config.Database, tlsParam)
+	// SSL设置
+	if d.Config.TLSEnabled {
+		options["ssl"] = "true"
+	}
+
+	url := go_ora.BuildUrl(d.Config.Host, d.Config.Port, d.Config.Database,
+		d.Config.Username, d.Config.Password, options)
+	return url
 }
 
 // GetMaskedConnectionString 获取遮蔽密码的连接字符串（日志使用）
-func (d *MySQLDriver) GetMaskedConnectionString() string {
-	return fmt.Sprintf("%s:[REDACTED]@%s:%d/%s",
+func (d *OracleDriver) GetMaskedConnectionString() string {
+	return fmt.Sprintf("oracle://%s:[REDACTED]@%s:%d/%s",
 		d.Config.Username, d.Config.Host, d.Config.Port, d.Config.Database)
 }
 
 // GetSchema 获取表结构元数据
-func (d *MySQLDriver) GetSchema(ctx context.Context, tableName string) (*database.SchemaMetadata, error) {
+func (d *OracleDriver) GetSchema(ctx context.Context, tableName string) (*database.SchemaMetadata, error) {
 	return d.DescribeTable(ctx, tableName)
 }
 
 // GetIndexes 获取索引元数据
-func (d *MySQLDriver) GetIndexes(ctx context.Context, tableName string) (*database.IndexListMetadata, error) {
+func (d *OracleDriver) GetIndexes(ctx context.Context, tableName string) (*database.IndexListMetadata, error) {
 	return d.ShowIndexes(ctx, tableName)
 }
 
 // ListTables 列出所有表
-func (d *MySQLDriver) ListTables(ctx context.Context) ([]string, error) {
+func (d *OracleDriver) ListTables(ctx context.Context) ([]string, error) {
 	return d.ShowTables(ctx)
 }

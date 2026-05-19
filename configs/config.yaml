@@ -23,6 +23,65 @@ databases:
     pool_size: 5
     timeout: 30
 
+  # Example PostgreSQL connection
+  postgres-analytics:
+    type: postgres
+    host: ${PG_HOST}
+    port: 5432
+    username: ${PG_USER}
+    password: ${PG_PASSWORD}
+    database: ${PG_DATABASE}
+    pool_size: 10
+    timeout: 30
+
+  # Example SQLite connection (file-based)
+  sqlite-local:
+    type: sqlite
+    path: /data/app.db
+    timeout: 10
+
+  # Example ClickHouse connection (MySQL protocol compatible)
+  clickhouse-olap:
+    type: clickhouse
+    host: ${CH_HOST}
+    port: 9004           # MySQL protocol port (not HTTP 8123)
+    username: default
+    password: ""
+    database: analytics
+    protocol_compatible: ""  # Uses MySQL driver with ClickHouse validator
+
+  # Example Doris connection (MySQL protocol compatible)
+  doris-fe:
+    type: doris
+    host: ${DORIS_HOST}
+    port: 9030
+    username: root
+    password: ""
+    database: olap_db
+    protocol_compatible: ""
+
+  # Example SQL Server connection
+  sqlserver-enterprise:
+    type: sqlserver
+    host: ${SQLSERVER_HOST}
+    port: 1433
+    username: ${SQLSERVER_USER}
+    password: ${SQLSERVER_PASSWORD}
+    database: enterprise_db
+    pool_size: 5
+    timeout: 30
+
+  # Example Oracle connection
+  oracle-mission:
+    type: oracle
+    host: ${ORACLE_HOST}
+    port: 1521
+    username: ${ORACLE_USER}
+    password: ${ORACLE_PASSWORD}
+    database: mission_db  # service_name
+    pool_size: 5
+    timeout: 30
+
   # Example MongoDB connection
   mongo-analytics:
     type: mongodb
@@ -32,6 +91,28 @@ databases:
     password: ${MONGO_PASSWORD}  # Environment variable
     database: ${MONGO_DATABASE}
     pool_size: 5
+    timeout: 30
+
+  # Example MariaDB connection (MySQL transparent compatibility)
+  mariadb-app:
+    type: mariadb
+    host: ${MARIADB_HOST}
+    port: 3306
+    username: ${MARIADB_USER}
+    password: ${MARIADB_PASSWORD}
+    database: app_db
+    pool_size: 5
+    timeout: 30
+
+  # Example TiDB connection (MySQL transparent compatibility)
+  tidb-cluster:
+    type: tidb
+    host: ${TIDB_HOST}
+    port: 4000
+    username: ${TIDB_USER}
+    password: ${TIDB_PASSWORD}
+    database: cluster_db
+    pool_size: 10
     timeout: 30
 
 # Query limits (enforced for safety)
