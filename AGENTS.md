@@ -1,7 +1,7 @@
 # AGENTS.md
 
 ## 1. Project Overview
-- MCP (Model Context Protocol) 数据库查询服务器，支持 MySQL 和 MongoDB
+- MCP (Model Context Protocol) 数据库查询服务器，支持 MySQL、MongoDB、PostgreSQL、SQLite、SQL Server、Oracle 及 MySQL 协议兼容数据库（ClickHouse、Doris、MariaDB、TiDB）
 - 为 AI Agent 提供安全的只读数据库查询能力
 - **不在本模块处理的内容**: 数据写入操作、数据库管理/迁移、非查询类 DDL 操作
 
@@ -21,7 +21,15 @@
 - 重构任务范围外的代码，无论看起来多"优雅"
 - 修改任务未涉及的目录或文件
 - 将敏感信息（密码、API Key）打印到日志
-- 修改 `src/database/mysql/validator.go` 或 `src/database/mongodb/validator.go` 中的禁止关键字列表以绕过只读限制
+- 修改任何 validator 文件中的禁止关键字列表以绕过只读限制：
+  - `src/database/mysql/validator.go`
+  - `src/database/mongodb/validator.go`
+  - `src/database/postgres/validator.go`
+  - `src/database/sqlite/validator.go`
+  - `src/database/sqlserver/validator.go`
+  - `src/database/oracle/validator.go`
+  - `src/database/clickhouse/validator.go`
+  - `src/database/doris/validator.go`
 - 允许任何写操作（INSERT, UPDATE, DELETE, DROP, ALTER, CREATE, TRUNCATE）
 
 ### Ask First — 执行前必须获得用户明确确认
@@ -44,20 +52,33 @@
 - Language: Go 1.25+
 - Framework: github.com/modelcontextprotocol/go-sdk v1.6.0
 - Package Manager: go mod
-- Database / Middleware: MySQL (go-sql-driver/mysql v1.10.0), MongoDB (mongo-driver v1.17.9)
+- Database Drivers:
+  - MySQL: go-sql-driver/mysql v1.10.0
+  - MongoDB: mongo-driver v1.17.9
+  - PostgreSQL: pgx/v5
+  - SQLite: go-sqlite3 (CGO required)
+  - SQL Server: go-mssqldb
+  - Oracle: go-ora/v2
 - Test Framework: go test
 - Build Tool: Makefile
 
 ## 5. Repository Structure
 
 ```
-cmd/server/main.go      # 入口点，CLI 解析，优雅关闭
+cmd/server/main.go      # 入口点，CLI 解析，驱动注册，优雅关闭
 src/
   database/
-    interface.go        # Database 接口定义
-    pool.go             # PoolManager - 连接池管理
+    interface.go        # Database 接口定义、DatabaseType 常量、DatabaseConfig
+    pool.go             # PoolManager - 连接池管理、DriverRegistry 模式
+    registry.go         # 驱动注册（预留）
     mysql/              # MySQL 驱动实现
     mongodb/            # MongoDB 驱动实现
+    postgres/           # PostgreSQL 驱动实现
+    sqlite/             # SQLite 驱动实现（CGO）
+    sqlserver/          # SQL Server 驱动实现
+    oracle/             # Oracle 驱动实现
+    clickhouse/         # ClickHouse validator（MySQL驱动复用）
+    doris/              # Doris validator（MySQL驱动复用）
   mcp/
     server.go           # MCPServer 封装
     tools.go            # MCP 工具定义
@@ -74,7 +95,7 @@ scripts/                # 构建和测试脚本
 ```
 
 核心入口：
-- `cmd/server/main.go` — 程序入口，urfave/cli 解析参数
+- `cmd/server/main.go` — 程序入口、驱动注册、urfave/cli 解析参数
 - `Makefile` — 构建、测试、运行命令集合
 - `go.mod` — 依赖管理
 
@@ -92,8 +113,13 @@ Formatter/Linter 自动保证：`golangci-lint`（`make lint`）
 - 无已知历史遗留问题
 
 参考实现（可模仿的好例子）：
-- `src/database/mysql/validator.go` — 只读验证的正实现例
+- `src/database/mysql/validator.go` — MySQL 只读验证的正实现例
+- `src/database/postgres/validator.go` — PostgreSQL WITH CTE 支持
+- `src/database/sqlserver/validator.go` — EXEC sp_* 系统存储过程
+- `src/database/oracle/validator.go` — FLASHBACK 查询允许、恢复禁止
+- `src/database/sqlite/validator.go` — 安全 PRAGMA 白名单
 - `src/utils/logger.go` — 密码掩码的标准实现
+- `cmd/server/main.go` — DriverRegistry 注册模式
 
 ## 7. Validation（任务完成的必要条件）
 

@@ -1,22 +1,37 @@
 # mcp-dbquery
 
-一个基于 MCP (Model Context Protocol) 的数据库查询工具，支持 MySQL 和 MongoDB 的只读查询操作。
+一个基于 MCP (Model Context Protocol) 的数据库查询工具，支持多种数据库的只读查询操作。
 
 ## 功能特性
 
-- 支持 MySQL 和 MongoDB 数据库
-- 严格的只读操作限制（仅允许 SELECT、find、aggregate 等查询操作）
-- 连接池管理
-- 支持 STDIO 和 HTTP 两种传输模式
-- 密码掩码日志（安全日志输出）
-- API Key 认证（HTTP 模式）
-- 查询超时和行数限制
+- **多数据库支持**: MySQL、MongoDB、PostgreSQL、SQLite、SQL Server、Oracle
+- **MySQL 协议兼容**: ClickHouse、Doris、MariaDB、TiDB（复用 MySQL 驱动）
+- **严格只读限制**: 仅允许 SELECT、find、aggregate 等查询操作
+- **双传输模式**: STDIO（MCP 客户端）和 HTTP（API 服务）
+- **连接池管理**: 多数据库连接池复用
+- **安全日志**: 密码自动掩码为 `[REDACTED]`
+- **API Key 认证**: HTTP 模式支持 API Key 认证
+
+## 支持的数据库
+
+| 数据库 | 驱动 | 说明 |
+|--------|------|------|
+| MySQL | go-sql-driver/mysql | 基准实现 |
+| MongoDB | mongo-driver | 文档数据库 |
+| PostgreSQL | pgx/v5 | 支持 WITH CTE |
+| SQLite | go-sqlite3 (CGO) | 安全 PRAGMA 白名单 |
+| SQL Server | go-mssqldb | EXEC sp_* 系统存储过程 |
+| Oracle | go-ora/v2 | FLASHBACK 查询 |
+| ClickHouse | MySQL 协议 | 使用 MySQL 驱动 + 自定义验证器 |
+| Doris | MySQL 协议 | 使用 MySQL 驱动 + 自定义验证器 |
+| MariaDB | MySQL 协议 | 透明复用 MySQL 验证器 |
+| TiDB | MySQL 协议 | 透明复用 MySQL 验证器 |
 
 ## MCP 工具
 
 | 工具名 | 描述 |
 |--------|------|
-| `query_mysql_data` | 执行 MySQL SELECT 查询 |
+| `query_mysql_data` | 执行 SQL SELECT 查询（MySQL/PostgreSQL/SQLite/SQL Server/Oracle） |
 | `query_mongodb_data` | 执行 MongoDB find/aggregate 查询 |
 | `get_schema` | 获取表/集合结构信息 |
 | `get_indexes` | 获取索引元数据 |
@@ -27,7 +42,7 @@
 ### 前置要求
 
 - Go 1.25+
-- MySQL 或 MongoDB 数据库
+- SQLite 需要 CGO 支持（安装 C 编译器）
 
 ### 构建
 
@@ -43,9 +58,7 @@ make build-win    # Windows: 输出到 bin/db-tools.exe
 
 ## 配置
 
-### 配置文件
-
-配置文件位于 `configs/config.yaml`，支持环境变量替换：
+配置文件位于 `configs/config.yaml`：
 
 ```yaml
 server:
@@ -64,6 +77,35 @@ databases:
     database: ${MYSQL_DATABASE}
     pool_size: 5
     timeout: 30
+
+  postgres-analytics:
+    type: postgres
+    host: ${PG_HOST}
+    port: 5432
+    username: ${PG_USER}
+    password: ${PG_PASSWORD}
+    database: analytics
+
+  mongodb-docs:
+    type: mongodb
+    host: ${MONGO_HOST}
+    port: 27017
+    username: ${MONGO_USER}
+    password: ${MONGO_PASSWORD}
+    database: documents
+
+  sqlite-local:
+    type: sqlite
+    path: /data/local.db    # SQLite 文件路径
+
+  clickhouse-prod:
+    type: clickhouse
+    protocol_compatible: clickhouse  # MySQL 驱动 + ClickHouse 验证器
+    host: localhost
+    port: 9000
+    username: default
+    password: ""
+    database: default
 ```
 
 ### 环境变量
@@ -76,43 +118,176 @@ export MYSQL_DATABASE=your_database
 export API_KEY=your_32_char_api_key  # HTTP 模式需要
 ```
 
-## 使用
+## MCP 使用示例
 
-### STDIO 模式（推荐用于 MCP 客户端）
+### STDIO 模式
 
+STDIO 模式适用于 MCP 客户端（如 Claude Desktop、Cursor、VS Code MCP 扩展）：
+
+**启动服务**:
 ```bash
 ./bin/db-tools -c configs/config.yaml
+# 或使用 Makefile
+make run
 ```
 
-### HTTP 模式
-
-```bash
-./bin/db-tools -c configs/config.yaml -t http
-```
-
-### MCP 客户端配置
-
-在 MCP 客户端的配置文件中添加：
-
+**Claude Desktop 配置** (`claude_desktop_config.json`):
 ```json
 {
   "mcpServers": {
-    "db-query-tool": {
-      "command": "./bin/db-tools",
-      "args": ["-config", "configs/config.yaml"]
+    "db-query": {
+      "command": "/absolute/path/to/bin/db-tools",
+      "args": ["-c", "/absolute/path/to/configs/config.yaml"]
     }
   }
 }
+```
+
+**Cursor / VS Code MCP 配置**:
+```json
+{
+  "mcp": {
+    "servers": {
+      "db-query": {
+        "command": "./bin/db-tools",
+        "args": ["-c", "configs/config.yaml"],
+        "cwd": "/path/to/mcp-dbquery"
+      }
+    }
+  }
+}
+```
+
+启动后，AI 客户端可通过 MCP 工具执行查询：
+- `query_mysql_data`: "查询 users 表前 10 条记录"
+- `get_schema`: "查看 orders 表结构"
+- `list_tables`: "列出所有表"
+
+### HTTP 模式
+
+HTTP 模式适用于需要 REST API 访问的场景，或远程 MCP 客户端连接：
+
+**启动服务**:
+```bash
+./bin/db-tools -c configs/config.yaml -t http
+# 或使用 Makefile
+make run-http
+```
+
+服务启动后监听 `http://0.0.0.0:8080`
+
+**MCP 客户端 HTTP 配置**:
+
+Claude Desktop (`claude_desktop_config.json`):
+```json
+{
+  "mcpServers": {
+    "db-query": {
+      "url": "http://localhost:8080/mcp",
+      "headers": {
+        "X-API-Key": "your_32_char_api_key"
+      }
+    }
+  }
+}
+```
+
+Cursor / VS Code MCP:
+```json
+{
+  "mcp": {
+    "servers": {
+      "db-query": {
+        "url": "http://localhost:8080/mcp",
+        "headers": {
+          "X-API-Key": "your_32_char_api_key"
+        }
+      }
+    }
+  }
+}
+```
+
+**API 调用示例**:
+
+查询数据:
+```bash
+curl -X POST http://localhost:8080/mcp \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your_32_char_api_key" \
+  -d '{
+    "method": "tools/call",
+    "params": {
+      "name": "query_mysql_data",
+      "arguments": {
+        "database_id": "mysql-primary",
+        "query": "SELECT * FROM users LIMIT 10"
+      }
+    }
+  }'
+```
+
+获取表结构:
+```bash
+curl -X POST http://localhost:8080/mcp \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your_32_char_api_key" \
+  -d '{
+    "method": "tools/call",
+    "params": {
+      "name": "get_schema",
+      "arguments": {
+        "database_id": "mysql-primary",
+        "table": "users"
+      }
+    }
+  }'
+```
+
+列出所有表:
+```bash
+curl -X POST http://localhost:8080/mcp \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your_32_char_api_key" \
+  -d '{
+    "method": "tools/call",
+    "params": {
+      "name": "list_tables",
+      "arguments": {
+        "database_id": "mysql-primary"
+      }
+    }
+  }'
+```
+
+MongoDB 查询:
+```bash
+curl -X POST http://localhost:8080/mcp \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your_32_char_api_key" \
+  -d '{
+    "method": "tools/call",
+    "params": {
+      "name": "query_mongodb_data",
+      "arguments": {
+        "database_id": "mongodb-docs",
+        "collection": "users",
+        "filter": {"status": "active"},
+        "limit": 10
+      }
+    }
+  }'
 ```
 
 ## 安全限制
 
 为确保数据安全，本工具严格执行以下限制：
 
-- **只读操作**: 禁止 INSERT、UPDATE、DELETE、DROP、ALTER、CREATE 等写操作
+- **只读操作**: 禁止 INSERT、UPDATE、DELETE、DROP、ALTER、CREATE、TRUNCATE
 - **密码掩码**: 所有日志中密码显示为 `[REDACTED]`
 - **API Key**: HTTP 模式要求 API Key 至少 32 字符
 - **查询限制**: 最大返回行数 1000，查询超时 300 秒
+- **验证器**: 每种数据库有独立的 SQL/操作验证器，无法绕过
 
 ## 开发
 
@@ -120,13 +295,16 @@ export API_KEY=your_32_char_api_key  # HTTP 模式需要
 # 运行测试
 make test              # 单元测试
 make test-coverage     # 生成覆盖率报告
-make test-integration  # 集成测试（需要 Docker）
 
 # 代码格式化
 make fmt
 
 # 代码检查
 make lint
+
+# 构建
+make build             # Linux/Mac
+make build-win         # Windows
 ```
 
 ## License
