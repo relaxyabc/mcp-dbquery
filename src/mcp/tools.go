@@ -16,7 +16,6 @@ type ToolDefinition struct {
 }
 
 // PredefinedTools 预定义的工具列表
-// 基于contracts/mcp-tools.json定义
 var PredefinedTools = []ToolDefinition{
 	{
 		Name:        "query_mysql_data",
@@ -34,7 +33,7 @@ var PredefinedTools = []ToolDefinition{
 	},
 	{
 		Name:        "query_mongodb_data",
-		Description: "在MongoDB集合上执行只读find查询。返回JSON数组格式的文档结果。仅允许find和aggregate操作。",
+		Description: "在MongoDB集合上执行只读find查询。返回JSON数组格式的文档结果。",
 		InputSchema: &jsonschema.Schema{
 			Type: "object",
 			Properties: map[string]*jsonschema.Schema{
@@ -42,9 +41,49 @@ var PredefinedTools = []ToolDefinition{
 				"collection":  {Type: "string", Description: "要查询的集合名称"},
 				"filter":      {Type: "object", Description: "MongoDB过滤查询（bson.M格式）"},
 				"limit":       {Type: "integer", Description: "最大返回文档数（默认1000）"},
-				"timeout":     {Type: "integer", Description: "查询超时时间（秒，默认30）"},
 			},
 			Required: []string{"database_id", "collection"},
+		},
+	},
+	{
+		Name:        "aggregate_mongodb_data",
+		Description: "在MongoDB集合上执行聚合管道查询。返回JSON数组格式的聚合结果。",
+		InputSchema: &jsonschema.Schema{
+			Type: "object",
+			Properties: map[string]*jsonschema.Schema{
+				"database_id": {Type: "string", Description: "服务器中配置的数据库连接标识符"},
+				"collection":  {Type: "string", Description: "要查询的集合名称"},
+				"pipeline":    {Type: "array", Description: "MongoDB聚合管道（JSON数组格式）", Items: &jsonschema.Schema{Type: "object"}},
+				"limit":       {Type: "integer", Description: "最大返回文档数（默认1000）"},
+			},
+			Required: []string{"database_id", "collection", "pipeline"},
+		},
+	},
+	{
+		Name:        "count_mongodb_data",
+		Description: "在MongoDB集合上执行计数查询。返回匹配过滤条件的文档数量。",
+		InputSchema: &jsonschema.Schema{
+			Type: "object",
+			Properties: map[string]*jsonschema.Schema{
+				"database_id": {Type: "string", Description: "服务器中配置的数据库连接标识符"},
+				"collection":  {Type: "string", Description: "要查询的集合名称"},
+				"filter":      {Type: "object", Description: "MongoDB过滤查询（bson.M格式，可选）"},
+			},
+			Required: []string{"database_id", "collection"},
+		},
+	},
+	{
+		Name:        "distinct_mongodb_data",
+		Description: "在MongoDB集合上执行distinct查询。返回指定字段的唯一值列表。",
+		InputSchema: &jsonschema.Schema{
+			Type: "object",
+			Properties: map[string]*jsonschema.Schema{
+				"database_id": {Type: "string", Description: "服务器中配置的数据库连接标识符"},
+				"collection":  {Type: "string", Description: "要查询的集合名称"},
+				"field":       {Type: "string", Description: "要获取唯一值的字段名"},
+				"filter":      {Type: "object", Description: "MongoDB过滤查询（bson.M格式，可选）"},
+			},
+			Required: []string{"database_id", "collection", "field"},
 		},
 	},
 	{

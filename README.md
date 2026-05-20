@@ -32,7 +32,10 @@
 | 工具名 | 描述 |
 |--------|------|
 | `query_mysql_data` | 执行 SQL SELECT 查询（MySQL/PostgreSQL/SQLite/SQL Server/Oracle） |
-| `query_mongodb_data` | 执行 MongoDB find/aggregate 查询 |
+| `query_mongodb_data` | 执行 MongoDB find 查询 |
+| `aggregate_mongodb_data` | 执行 MongoDB 聚合管道查询 |
+| `count_mongodb_data` | 执行 MongoDB 计数查询 |
+| `distinct_mongodb_data` | 执行 MongoDB distinct 查询（获取字段唯一值） |
 | `get_schema` | 获取表/集合结构信息 |
 | `get_indexes` | 获取索引元数据 |
 | `list_tables` | 列出所有表/集合 |
@@ -301,6 +304,69 @@ curl -X POST http://localhost:8080/mcp \
         "collection": "users",
         "filter": {"status": "active"},
         "limit": 10
+      }
+    }
+  }'
+```
+
+MongoDB 聚合查询:
+```bash
+curl -X POST http://localhost:8080/mcp \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your_32_char_api_key" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 6,
+    "method": "tools/call",
+    "params": {
+      "name": "aggregate_mongodb_data",
+      "arguments": {
+        "database_id": "mongo-analytics",
+        "collection": "orders",
+        "pipeline": [
+          {"$match": {"status": "completed"}},
+          {"$group": {"_id": "$product", "total": {"$sum": "$price"}}}
+        ]
+      }
+    }
+  }'
+```
+
+MongoDB 计数查询:
+```bash
+curl -X POST http://localhost:8080/mcp \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your_32_char_api_key" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 7,
+    "method": "tools/call",
+    "params": {
+      "name": "count_mongodb_data",
+      "arguments": {
+        "database_id": "mongo-analytics",
+        "collection": "users",
+        "filter": {"status": "active"}
+      }
+    }
+  }'
+```
+
+MongoDB Distinct 查询:
+```bash
+curl -X POST http://localhost:8080/mcp \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your_32_char_api_key" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 8,
+    "method": "tools/call",
+    "params": {
+      "name": "distinct_mongodb_data",
+      "arguments": {
+        "database_id": "mongo-analytics",
+        "collection": "users",
+        "field": "country"
       }
     }
   }'

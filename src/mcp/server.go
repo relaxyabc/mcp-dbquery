@@ -99,6 +99,24 @@ func (ms *MCPServer) RegisterAllTools() {
 		ms.RegisterTool(*mongoQueryTool, handlers.MongoDBQueryHandler(ms.poolManager))
 	}
 
+	// 注册MongoDB聚合查询工具
+	mongoAggregateTool := GetToolByName("aggregate_mongodb_data")
+	if mongoAggregateTool != nil {
+		ms.RegisterTool(*mongoAggregateTool, handlers.MongoDBAggregateHandler(ms.poolManager))
+	}
+
+	// 注册MongoDB计数查询工具
+	mongoCountTool := GetToolByName("count_mongodb_data")
+	if mongoCountTool != nil {
+		ms.RegisterTool(*mongoCountTool, handlers.MongoDBCountHandler(ms.poolManager))
+	}
+
+	// 注册MongoDB distinct查询工具
+	mongoDistinctTool := GetToolByName("distinct_mongodb_data")
+	if mongoDistinctTool != nil {
+		ms.RegisterTool(*mongoDistinctTool, handlers.MongoDBDistinctHandler(ms.poolManager))
+	}
+
 	// 注册Schema工具
 	schemaTool := GetToolByName("get_schema")
 	if schemaTool != nil {

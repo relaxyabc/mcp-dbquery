@@ -13,8 +13,8 @@ import (
 	"github.com/relaxyabc/mcp-dbquery/src/utils"
 )
 
-// ExecuteFind 执行MongoDB find查询
-func (d *MongoDBDriver) ExecuteFind(ctx context.Context, collectionName string, filter bson.M, limit int) (*database.QueryResult, error) {
+// ExecuteFind 执行MongoDB find查询（实现Database接口）
+func (d *MongoDBDriver) ExecuteFind(ctx context.Context, collectionName string, filter map[string]interface{}, limit int) (*database.QueryResult, error) {
 	start := time.Now()
 
 	// 验证操作是否为只读
@@ -36,8 +36,14 @@ func (d *MongoDBDriver) ExecuteFind(ctx context.Context, collectionName string, 
 		SetLimit(int64(limit)).
 		SetBatchSize(int32(limit))
 
+	// 将 map[string]interface{} 转换为 bson.M
+	bsonFilter := bson.M{}
+	for k, v := range filter {
+		bsonFilter[k] = v
+	}
+
 	// 执行查询
-	cursor, err := collection.Find(ctx, filter, findOpts)
+	cursor, err := collection.Find(ctx, bsonFilter, findOpts)
 	if err != nil {
 		return database.NewErrorResult(d.ID, "QUERY_ERROR", fmt.Sprintf("查询执行失败: %s", err)), err
 	}
@@ -83,8 +89,8 @@ func (d *MongoDBDriver) ExecuteFind(ctx context.Context, collectionName string, 
 	return database.NewQueryResult(d.ID, data, resultType, executionTime), nil
 }
 
-// ExecuteAggregate 执行MongoDB聚合查询
-func (d *MongoDBDriver) ExecuteAggregate(ctx context.Context, collectionName string, pipeline bson.A, limit int) (*database.QueryResult, error) {
+// ExecuteAggregate 执行MongoDB聚合查询（实现Database接口）
+func (d *MongoDBDriver) ExecuteAggregate(ctx context.Context, collectionName string, pipeline []map[string]interface{}, limit int) (*database.QueryResult, error) {
 	start := time.Now()
 
 	// 验证操作是否为只读
@@ -92,8 +98,14 @@ func (d *MongoDBDriver) ExecuteAggregate(ctx context.Context, collectionName str
 		return nil, err
 	}
 
+	// 将 pipeline 转换为 bson.A
+	bsonPipeline := bson.A{}
+	for _, stage := range pipeline {
+		bsonPipeline = append(bsonPipeline, stage)
+	}
+
 	// 验证聚合管道
-	if err := ValidateAggregatePipeline(pipeline); err != nil {
+	if err := ValidateAggregatePipeline(bsonPipeline); err != nil {
 		return nil, err
 	}
 
@@ -110,7 +122,7 @@ func (d *MongoDBDriver) ExecuteAggregate(ctx context.Context, collectionName str
 	aggOpts := options.Aggregate()
 
 	// 执行聚合
-	cursor, err := collection.Aggregate(ctx, pipeline, aggOpts)
+	cursor, err := collection.Aggregate(ctx, bsonPipeline, aggOpts)
 	if err != nil {
 		return database.NewErrorResult(d.ID, "QUERY_ERROR", fmt.Sprintf("聚合执行失败: %s", err)), err
 	}
@@ -137,8 +149,8 @@ func (d *MongoDBDriver) ExecuteAggregate(ctx context.Context, collectionName str
 	return database.NewQueryResult(d.ID, data, database.QueryTypeData, executionTime), nil
 }
 
-// ExecuteCount 执行计数查询
-func (d *MongoDBDriver) ExecuteCount(ctx context.Context, collectionName string, filter bson.M) (int64, error) {
+// ExecuteCount 执行计数查询（实现Database接口）
+func (d *MongoDBDriver) ExecuteCount(ctx context.Context, collectionName string, filter map[string]interface{}) (int64, error) {
 	// 验证操作是否为只读
 	if err := d.ValidateQuery("count"); err != nil {
 		return 0, err
@@ -153,9 +165,15 @@ func (d *MongoDBDriver) ExecuteCount(ctx context.Context, collectionName string,
 	// 获取集合
 	collection := d.GetCollection(collectionName)
 
+	// 将 map[string]interface{} 转换为 bson.M
+	bsonFilter := bson.M{}
+	for k, v := range filter {
+		bsonFilter[k] = v
+	}
+
 	// 执行计数
 	countOpts := options.Count()
-	count, err := collection.CountDocuments(ctx, filter, countOpts)
+	count, err := collection.CountDocuments(ctx, bsonFilter, countOpts)
 	if err != nil {
 		return 0, err
 	}
@@ -164,8 +182,8 @@ func (d *MongoDBDriver) ExecuteCount(ctx context.Context, collectionName string,
 	return count, nil
 }
 
-// ExecuteDistinct 执行distinct查询
-func (d *MongoDBDriver) ExecuteDistinct(ctx context.Context, collectionName string, fieldName string, filter bson.M) ([]interface{}, error) {
+// ExecuteDistinct 执行distinct查询（实现Database接口）
+func (d *MongoDBDriver) ExecuteDistinct(ctx context.Context, collectionName string, fieldName string, filter map[string]interface{}) ([]interface{}, error) {
 	// 验证操作是否为只读
 	if err := d.ValidateQuery("distinct"); err != nil {
 		return nil, err
@@ -180,9 +198,15 @@ func (d *MongoDBDriver) ExecuteDistinct(ctx context.Context, collectionName stri
 	// 获取集合
 	collection := d.GetCollection(collectionName)
 
+	// 将 map[string]interface{} 转换为 bson.M
+	bsonFilter := bson.M{}
+	for k, v := range filter {
+		bsonFilter[k] = v
+	}
+
 	// 执行distinct
 	distinctOpts := options.Distinct()
-	values, err := collection.Distinct(ctx, fieldName, filter, distinctOpts)
+	values, err := collection.Distinct(ctx, fieldName, bsonFilter, distinctOpts)
 	if err != nil {
 		return nil, err
 	}

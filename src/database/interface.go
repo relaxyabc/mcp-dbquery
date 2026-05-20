@@ -38,8 +38,23 @@ type Database interface {
 	// GetID 返回数据库标识符
 	GetID() string
 
-	// ExecuteQuery 执行只读查询并返回结果
+	// ExecuteQuery 执行只读查询并返回结果（通用接口）
 	ExecuteQuery(ctx context.Context, query string, limit int, timeout time.Duration) (*QueryResult, error)
+
+	// ExecuteSelectQuery 执行SQL SELECT查询（SQL数据库专用，MongoDB返回不支持）
+	ExecuteSelectQuery(ctx context.Context, query string, limit int) (*QueryResult, error)
+
+	// ExecuteFind 执行MongoDB find查询（MongoDB专用，SQL数据库返回不支持）
+	ExecuteFind(ctx context.Context, collection string, filter map[string]interface{}, limit int) (*QueryResult, error)
+
+	// ExecuteAggregate 执行MongoDB聚合查询（MongoDB专用，SQL数据库返回不支持）
+	ExecuteAggregate(ctx context.Context, collection string, pipeline []map[string]interface{}, limit int) (*QueryResult, error)
+
+	// ExecuteCount 执行计数查询（MongoDB专用计数，SQL数据库返回不支持）
+	ExecuteCount(ctx context.Context, collection string, filter map[string]interface{}) (int64, error)
+
+	// ExecuteDistinct 执行distinct查询（MongoDB专用，SQL数据库返回不支持）
+	ExecuteDistinct(ctx context.Context, collection string, fieldName string, filter map[string]interface{}) ([]interface{}, error)
 
 	// GetSchema 返回表/集合结构元数据
 	GetSchema(ctx context.Context, tableName string) (*SchemaMetadata, error)

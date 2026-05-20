@@ -237,3 +237,28 @@ func (d *PostgresDriver) GetIndexes(ctx context.Context, tableName string) (*dat
 func (d *PostgresDriver) ListTables(ctx context.Context) ([]string, error) {
 	return d.ShowTables(ctx)
 }
+
+// ExecuteSelectQuery 执行SELECT查询并返回结果
+func (d *PostgresDriver) ExecuteSelectQuery(ctx context.Context, query string, limit int) (*database.QueryResult, error) {
+	return d.ExecuteQuery(ctx, query, limit, time.Duration(d.Config.Timeout)*time.Second)
+}
+
+// ExecuteFind MongoDB find查询（PostgreSQL不支持，返回错误）
+func (d *PostgresDriver) ExecuteFind(ctx context.Context, collection string, filter map[string]interface{}, limit int) (*database.QueryResult, error) {
+	return nil, fmt.Errorf("PostgreSQL 不支持 MongoDB find 查询，请使用 ExecuteSelectQuery 执行 SQL 查询")
+}
+
+// ExecuteAggregate MongoDB聚合查询（PostgreSQL不支持，返回错误）
+func (d *PostgresDriver) ExecuteAggregate(ctx context.Context, collection string, pipeline []map[string]interface{}, limit int) (*database.QueryResult, error) {
+	return nil, fmt.Errorf("PostgreSQL 不支持 MongoDB aggregate 查询，请使用 ExecuteSelectQuery 执行 SQL 查询")
+}
+
+// ExecuteCount MongoDB计数查询（PostgreSQL不支持，返回错误）
+func (d *PostgresDriver) ExecuteCount(ctx context.Context, collection string, filter map[string]interface{}) (int64, error) {
+	return 0, fmt.Errorf("PostgreSQL 不支持 MongoDB count 查询，请使用 SELECT COUNT(*) 执行 SQL 计数")
+}
+
+// ExecuteDistinct MongoDB distinct查询（PostgreSQL不支持，返回错误）
+func (d *PostgresDriver) ExecuteDistinct(ctx context.Context, collection string, fieldName string, filter map[string]interface{}) ([]interface{}, error) {
+	return nil, fmt.Errorf("PostgreSQL 不支持 MongoDB distinct 查询，请使用 SELECT DISTINCT 执行 SQL 查询")
+}

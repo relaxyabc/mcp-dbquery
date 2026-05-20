@@ -143,6 +143,11 @@ func (d *MongoDBDriver) ExecuteQuery(ctx context.Context, query string, limit in
 	return nil, fmt.Errorf("请使用ExecuteFind或ExecuteAggregate方法")
 }
 
+// ExecuteSelectQuery 执行SQL SELECT查询（MongoDB不支持，返回错误）
+func (d *MongoDBDriver) ExecuteSelectQuery(ctx context.Context, query string, limit int) (*database.QueryResult, error) {
+	return nil, fmt.Errorf("MongoDB 不支持 SQL SELECT 查询，请使用 ExecuteFind 执行 MongoDB find 查询")
+}
+
 // ValidateQuery 验证查询是否为只读（宪章要求：严格只读）
 func (d *MongoDBDriver) ValidateQuery(query string) error {
 	// MongoDB验证逻辑在validator.go中实现
