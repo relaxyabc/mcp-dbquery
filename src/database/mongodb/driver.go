@@ -35,19 +35,39 @@ func NewMongoDBDriver(config database.DatabaseConfig) *MongoDBDriver {
 
 // Connect 建立MongoDB连接
 func (d *MongoDBDriver) Connect(ctx context.Context) error {
+	// 如果已有连接，先关闭
+	if d.Client != nil {
+		d.State = database.StateClosed
+		oldClient := d.Client
+		d.Client = nil
+		d.DB = nil
+		// 尝试关闭旧连接（不阻塞）
+		go func() {
+			_ = oldClient.Disconnect(context.Background())
+		}()
+	}
+
 	d.State = database.StateConnecting
-	utils.GlobalLogger.LogConnection(d.ID, d.GetMaskedConnectionString(), "connecting")
+	utils.GlobalLogger.Info("MongoDB开始连接 [ID=%s] [用户=%s] [主机=%s:%d] [数据库=%s]",
+		d.ID, d.Config.Username, d.Config.Host, d.Config.Port, d.Config.Database)
+
+	// 强制使用带超时的上下文，防止连接卡住
+	// 即使传入的 ctx 没有超时，也要确保最多 30 秒
+	connectCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
 
 	// 构建连接选项
 	clientOpts := options.Client().
 		ApplyURI(d.buildConnectionString()).
 		SetMaxPoolSize(uint64(d.Config.PoolSize)).
 		SetMinPoolSize(1).
-		SetMaxConnIdleTime(time.Duration(d.Config.Timeout) * time.Second).
-		SetConnectTimeout(time.Duration(d.Config.Timeout) * time.Second)
+		SetMaxConnIdleTime(10 * time.Minute).
+		SetConnectTimeout(10 * time.Second).
+		SetServerSelectionTimeout(10 * time.Second)
 
 	// 创建客户端
-	client, err := mongo.Connect(ctx, clientOpts)
+	utils.GlobalLogger.Info("MongoDB正在建立连接...")
+	client, err := mongo.Connect(connectCtx, clientOpts)
 	if err != nil {
 		d.State = database.StateError
 		utils.GlobalLogger.LogError("CONNECTION_ERROR", "MongoDB连接失败", err.Error())
@@ -55,16 +75,18 @@ func (d *MongoDBDriver) Connect(ctx context.Context) error {
 	}
 
 	// 测试连接
-	if err := client.Ping(ctx, nil); err != nil {
+	utils.GlobalLogger.Info("MongoDB正在Ping测试连接...")
+	if err := client.Ping(connectCtx, nil); err != nil {
 		d.State = database.StateError
-		utils.GlobalLogger.LogError("CONNECTION_ERROR", "MongoDB连接测试失败", err.Error())
+		_ = client.Disconnect(context.Background()) // 清理失败的连接
+		utils.GlobalLogger.LogError("CONNECTION_ERROR", "MongoDB Ping测试失败", err.Error())
 		return fmt.Errorf("MongoDB连接测试失败: %s", err)
 	}
 
 	d.Client = client
 	d.DB = client.Database(d.Config.Database)
 	d.State = database.StateConnected
-	utils.GlobalLogger.LogConnection(d.ID, d.GetMaskedConnectionString(), "connected")
+	utils.GlobalLogger.Info("MongoDB连接成功 [ID=%s] [用户=%s]", d.ID, d.Config.Username)
 
 	return nil
 }
@@ -90,15 +112,11 @@ func (d *MongoDBDriver) Close(ctx context.Context) error {
 }
 
 // IsConnected 检查连接状态
+// 信任连接池内部状态，避免频繁 Ping 导致的性能问题
 func (d *MongoDBDriver) IsConnected() bool {
-	if d.Client == nil {
-		return false
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	return d.Client.Ping(ctx, nil) == nil
+	// 仅检查状态，不执行 Ping
+	// MongoDB 连接池会自动管理连接健康状态
+	return d.Client != nil && d.State == database.StateConnected
 }
 
 // GetType 返回数据库类型

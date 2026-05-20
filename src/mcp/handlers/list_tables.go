@@ -11,11 +11,10 @@ import (
 	"github.com/relaxyabc/mcp-dbquery/src/utils"
 )
 
-// SchemaHandler Schema查询处理器
-func SchemaHandler(poolManager *database.PoolManager) func(ctx context.Context, args map[string]interface{}) (*mcp.CallToolResult, error) {
+// ListTablesHandler 表列表处理器
+func ListTablesHandler(poolManager *database.PoolManager) func(ctx context.Context, args map[string]interface{}) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, args map[string]interface{}) (*mcp.CallToolResult, error) {
 		databaseID, _ := args["database_id"].(string)
-		tableName, _ := args["table_name"].(string)
 
 		if databaseID == "" {
 			return &mcp.CallToolResult{
@@ -24,7 +23,7 @@ func SchemaHandler(poolManager *database.PoolManager) func(ctx context.Context, 
 			}, nil
 		}
 
-		utils.GlobalLogger.Info("Schema查询请求 [连接=%s] [表=%s]", databaseID, tableName)
+		utils.GlobalLogger.Info("表列表查询请求 [连接=%s]", databaseID)
 
 		// 获取数据库配置，根据类型直接选择驱动
 		config, exists := poolManager.GetConfig(databaseID)
@@ -40,79 +39,64 @@ func SchemaHandler(poolManager *database.PoolManager) func(ctx context.Context, 
 		// 根据数据库类型选择驱动
 		switch config.Type {
 		case database.DatabaseTypeMongoDB:
+			utils.GlobalLogger.Info("尝试获取MongoDB驱动 [ID=%s]", databaseID)
 			mongoDriver, err := getOrConnectMongo(ctx, poolManager, databaseID)
 			if err != nil {
+				utils.GlobalLogger.Error("获取MongoDB驱动失败: %s", err)
 				return &mcp.CallToolResult{
 					IsError: true,
 					Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("获取MongoDB驱动失败: %s", err)}},
 				}, nil
 			}
-			if tableName != "" {
-				schema, err := mongoDriver.GetSchema(ctx, tableName)
-				if err != nil {
-					return &mcp.CallToolResult{
-						IsError: true,
-						Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("获取集合结构失败: %s", err)}},
-					}, nil
-				}
-				resultJSON, _ := json.Marshal(schema.ToJSON())
-				return &mcp.CallToolResult{
-					Content: []mcp.Content{&mcp.TextContent{Text: string(resultJSON)}},
-				}, nil
-			}
+			utils.GlobalLogger.Info("MongoDB驱动获取成功，开始列出集合...")
 			collections, err := mongoDriver.ListTables(ctx)
 			if err != nil {
+				utils.GlobalLogger.Error("获取集合列表失败: %s", err)
 				return &mcp.CallToolResult{
 					IsError: true,
 					Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("获取集合列表失败: %s", err)}},
 				}, nil
 			}
-			result := map[string]interface{}{
+
+			utils.GlobalLogger.Info("MongoDB集合列表完成 [集合数=%d]", len(collections))
+			resultJSON, _ := json.Marshal(map[string]interface{}{
 				"database_id":      databaseID,
 				"type":             "mongodb",
 				"collections":      collections,
 				"collection_count": len(collections),
-			}
-			resultJSON, _ := json.Marshal(result)
+			})
 			return &mcp.CallToolResult{
 				Content: []mcp.Content{&mcp.TextContent{Text: string(resultJSON)}},
 			}, nil
 
 		default:
+			// MySQL 及其他 SQL 数据库
+			utils.GlobalLogger.Info("尝试获取MySQL驱动 [ID=%s]", databaseID)
 			mysqlDriver, err := getOrConnectMySQL(ctx, poolManager, databaseID)
 			if err != nil {
+				utils.GlobalLogger.Error("获取MySQL驱动失败: %s", err)
 				return &mcp.CallToolResult{
 					IsError: true,
 					Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("获取MySQL驱动失败: %s", err)}},
 				}, nil
 			}
-			if tableName != "" {
-				schema, err := mysqlDriver.GetSchema(ctx, tableName)
-				if err != nil {
-					return &mcp.CallToolResult{
-						IsError: true,
-						Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("获取表结构失败: %s", err)}},
-					}, nil
-				}
-				resultJSON, _ := json.Marshal(schema.ToJSON())
-				return &mcp.CallToolResult{
-					Content: []mcp.Content{&mcp.TextContent{Text: string(resultJSON)}},
-				}, nil
-			}
+			utils.GlobalLogger.Info("MySQL驱动获取成功，开始列出表...")
 			tables, err := mysqlDriver.ListTables(ctx)
 			if err != nil {
+				utils.GlobalLogger.Error("获取表列表失败: %s", err)
 				return &mcp.CallToolResult{
 					IsError: true,
 					Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("获取表列表失败: %s", err)}},
 				}, nil
 			}
-			result := map[string]interface{}{
+
+			utils.GlobalLogger.Info("MySQL表列表完成 [表数=%d]", len(tables))
+			resultJSON, _ := json.Marshal(map[string]interface{}{
 				"database_id": databaseID,
 				"type":        "mysql",
 				"tables":      tables,
 				"table_count": len(tables),
-			}
-			resultJSON, _ := json.Marshal(result)
+			})
 			return &mcp.CallToolResult{
 				Content: []mcp.Content{&mcp.TextContent{Text: string(resultJSON)}},
 			}, nil

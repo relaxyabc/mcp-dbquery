@@ -35,6 +35,7 @@ vendor/
 
 # ignore mcp.json
 mcp.json
+.mcp.json
 
 # Logs
 *.log

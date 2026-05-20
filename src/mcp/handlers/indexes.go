@@ -11,8 +11,8 @@ import (
 	"github.com/relaxyabc/mcp-dbquery/src/utils"
 )
 
-// SchemaHandler Schema查询处理器
-func SchemaHandler(poolManager *database.PoolManager) func(ctx context.Context, args map[string]interface{}) (*mcp.CallToolResult, error) {
+// IndexesHandler Index查询处理器
+func IndexesHandler(poolManager *database.PoolManager) func(ctx context.Context, args map[string]interface{}) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, args map[string]interface{}) (*mcp.CallToolResult, error) {
 		databaseID, _ := args["database_id"].(string)
 		tableName, _ := args["table_name"].(string)
@@ -24,7 +24,7 @@ func SchemaHandler(poolManager *database.PoolManager) func(ctx context.Context, 
 			}, nil
 		}
 
-		utils.GlobalLogger.Info("Schema查询请求 [连接=%s] [表=%s]", databaseID, tableName)
+		utils.GlobalLogger.Info("Index查询请求 [连接=%s] [表=%s]", databaseID, tableName)
 
 		// 获取数据库配置，根据类型直接选择驱动
 		config, exists := poolManager.GetConfig(databaseID)
@@ -40,6 +40,7 @@ func SchemaHandler(poolManager *database.PoolManager) func(ctx context.Context, 
 		// 根据数据库类型选择驱动
 		switch config.Type {
 		case database.DatabaseTypeMongoDB:
+			utils.GlobalLogger.Info("尝试获取MongoDB驱动 [ID=%s]", databaseID)
 			mongoDriver, err := getOrConnectMongo(ctx, poolManager, databaseID)
 			if err != nil {
 				return &mcp.CallToolResult{
@@ -47,19 +48,22 @@ func SchemaHandler(poolManager *database.PoolManager) func(ctx context.Context, 
 					Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("获取MongoDB驱动失败: %s", err)}},
 				}, nil
 			}
+
 			if tableName != "" {
-				schema, err := mongoDriver.GetSchema(ctx, tableName)
+				indexes, err := mongoDriver.GetIndexes(ctx, tableName)
 				if err != nil {
 					return &mcp.CallToolResult{
 						IsError: true,
-						Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("获取集合结构失败: %s", err)}},
+						Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("获取索引失败: %s", err)}},
 					}, nil
 				}
-				resultJSON, _ := json.Marshal(schema.ToJSON())
+				resultJSON, _ := json.Marshal(indexes.ToJSON())
 				return &mcp.CallToolResult{
 					Content: []mcp.Content{&mcp.TextContent{Text: string(resultJSON)}},
 				}, nil
 			}
+
+			// 获取所有集合的索引
 			collections, err := mongoDriver.ListTables(ctx)
 			if err != nil {
 				return &mcp.CallToolResult{
@@ -67,18 +71,28 @@ func SchemaHandler(poolManager *database.PoolManager) func(ctx context.Context, 
 					Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("获取集合列表失败: %s", err)}},
 				}, nil
 			}
-			result := map[string]interface{}{
-				"database_id":      databaseID,
-				"type":             "mongodb",
-				"collections":      collections,
-				"collection_count": len(collections),
+
+			allIndexes := make(map[string]interface{})
+			for _, coll := range collections {
+				indexes, err := mongoDriver.GetIndexes(ctx, coll)
+				if err != nil {
+					continue
+				}
+				allIndexes[coll] = indexes.ToJSON()
 			}
-			resultJSON, _ := json.Marshal(result)
+
+			resultJSON, _ := json.Marshal(map[string]interface{}{
+				"database_id": databaseID,
+				"type":        "mongodb",
+				"indexes":     allIndexes,
+			})
 			return &mcp.CallToolResult{
 				Content: []mcp.Content{&mcp.TextContent{Text: string(resultJSON)}},
 			}, nil
 
 		default:
+			// MySQL 及其他 SQL 数据库
+			utils.GlobalLogger.Info("尝试获取MySQL驱动 [ID=%s]", databaseID)
 			mysqlDriver, err := getOrConnectMySQL(ctx, poolManager, databaseID)
 			if err != nil {
 				return &mcp.CallToolResult{
@@ -86,19 +100,22 @@ func SchemaHandler(poolManager *database.PoolManager) func(ctx context.Context, 
 					Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("获取MySQL驱动失败: %s", err)}},
 				}, nil
 			}
+
 			if tableName != "" {
-				schema, err := mysqlDriver.GetSchema(ctx, tableName)
+				indexes, err := mysqlDriver.GetIndexes(ctx, tableName)
 				if err != nil {
 					return &mcp.CallToolResult{
 						IsError: true,
-						Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("获取表结构失败: %s", err)}},
+						Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("获取索引失败: %s", err)}},
 					}, nil
 				}
-				resultJSON, _ := json.Marshal(schema.ToJSON())
+				resultJSON, _ := json.Marshal(indexes.ToJSON())
 				return &mcp.CallToolResult{
 					Content: []mcp.Content{&mcp.TextContent{Text: string(resultJSON)}},
 				}, nil
 			}
+
+			// 获取所有表的索引
 			tables, err := mysqlDriver.ListTables(ctx)
 			if err != nil {
 				return &mcp.CallToolResult{
@@ -106,13 +123,21 @@ func SchemaHandler(poolManager *database.PoolManager) func(ctx context.Context, 
 					Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("获取表列表失败: %s", err)}},
 				}, nil
 			}
-			result := map[string]interface{}{
+
+			allIndexes := make(map[string]interface{})
+			for _, table := range tables {
+				indexes, err := mysqlDriver.GetIndexes(ctx, table)
+				if err != nil {
+					continue
+				}
+				allIndexes[table] = indexes.ToJSON()
+			}
+
+			resultJSON, _ := json.Marshal(map[string]interface{}{
 				"database_id": databaseID,
 				"type":        "mysql",
-				"tables":      tables,
-				"table_count": len(tables),
-			}
-			resultJSON, _ := json.Marshal(result)
+				"indexes":     allIndexes,
+			})
 			return &mcp.CallToolResult{
 				Content: []mcp.Content{&mcp.TextContent{Text: string(resultJSON)}},
 			}, nil

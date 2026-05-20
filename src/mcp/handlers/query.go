@@ -189,27 +189,44 @@ func getOrConnectMySQL(ctx context.Context, poolManager *database.PoolManager, d
 
 // getOrConnectMongo 获取或连接MongoDB驱动
 func getOrConnectMongo(ctx context.Context, poolManager *database.PoolManager, databaseID string) (*mongodb.MongoDBDriver, error) {
+	utils.GlobalLogger.Info("getOrConnectMongo: 开始获取MongoDB驱动 [ID=%s]", databaseID)
+
 	// 尝试从pool manager获取已连接的驱动
 	driverInterface, exists := poolManager.GetMongoDriver(databaseID)
+	utils.GlobalLogger.Info("getOrConnectMongo: PoolManager查询结果 [存在=%v]", exists)
+
 	if exists {
 		driver, ok := driverInterface.(*mongodb.MongoDBDriver)
-		if ok && driver.IsConnected() {
-			return driver, nil
+		utils.GlobalLogger.Info("getOrConnectMongo: 类型转换结果 [成功=%v]", ok)
+		if ok {
+			isConnected := driver.IsConnected()
+			utils.GlobalLogger.Info("getOrConnectMongo: 连接状态检查 [IsConnected=%v]", isConnected)
+			if isConnected {
+				utils.GlobalLogger.Info("getOrConnectMongo: 使用已存在的连接")
+				return driver, nil
+			}
+			utils.GlobalLogger.Info("getOrConnectMongo: 驱动存在但未连接，需要重连")
 		}
 	}
 
 	// 驱动不存在或未连接，创建新驱动
 	config, exists := poolManager.GetConfig(databaseID)
 	if !exists {
+		utils.GlobalLogger.Error("getOrConnectMongo: 未找到数据库配置 [ID=%s]", databaseID)
 		return nil, fmt.Errorf("未找到数据库配置: %s", databaseID)
 	}
 
+	utils.GlobalLogger.Info("getOrConnectMongo: 创建新驱动 [ID=%s] [类型=%s]", databaseID, config.Type)
 	driver := mongodb.NewMongoDBDriver(config)
+
+	utils.GlobalLogger.Info("getOrConnectMongo: 开始连接...")
 	if err := driver.Connect(ctx); err != nil {
+		utils.GlobalLogger.Error("getOrConnectMongo: 连接失败: %s", err)
 		return nil, err
 	}
 
 	// 存储到pool manager
+	utils.GlobalLogger.Info("getOrConnectMongo: 连接成功，存储到PoolManager")
 	poolManager.SetMongoDriver(databaseID, driver)
 	return driver, nil
 }

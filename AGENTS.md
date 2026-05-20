@@ -82,7 +82,11 @@ src/
   mcp/
     server.go           # MCPServer 封装
     tools.go            # MCP 工具定义
-    handlers/           # 工具处理器
+    handlers/
+      query.go          # query_mysql_data, query_mongodb_data
+      schema.go         # get_schema
+      indexes.go        # get_indexes
+      list_tables.go    # list_tables
   server/
     auth.go             # API Key 管理
     config.go           # YAML 配置加载
@@ -99,6 +103,45 @@ scripts/                # 构建和测试脚本
 - `Makefile` — 构建、测试、运行命令集合
 - `go.mod` — 依赖管理
 
+### Handler 架构
+
+每个 MCP 工具对应独立 handler 文件：
+```
+src/mcp/handlers/
+├── query.go        # query_mysql_data, query_mongodb_data
+├── schema.go       # get_schema
+├── indexes.go      # get_indexes
+├── list_tables.go  # list_tables
+```
+
+Handler 根据 `config.Type` 直接选择对应驱动，不尝试 fallback：
+```go
+config, exists := poolManager.GetConfig(databaseID)
+switch config.Type {
+case database.DatabaseTypeMongoDB:
+    mongoDriver, err := getOrConnectMongo(ctx, poolManager, databaseID)
+default:
+    mysqlDriver, err := getOrConnectMySQL(ctx, poolManager, databaseID)
+}
+```
+
+### HTTP 传输 (StreamableHTTP)
+
+使用 Stateless 模式避免 session 管理：
+```go
+handler := mcp.NewStreamableHTTPHandler(
+    func(r *http.Request) *mcp.Server { return ms.server },
+    &mcp.StreamableHTTPOptions{Stateless: true},
+)
+```
+
+OAuth discovery 返回空 `authorization_servers` 表示不支持 OAuth：
+```go
+// cmd/server/main.go
+func handleOAuthProtectedResource(w http.ResponseWriter, r *http.Request) {
+    w.Write([]byte(`{"resource": "...", "authorization_servers": []}`))
+}
+
 ## 6. Code Style
 
 Formatter/Linter 自动保证：`golangci-lint`（`make lint`）
@@ -108,6 +151,7 @@ Formatter/Linter 自动保证：`golangci-lint`（`make lint`）
 - 禁止 `_ = err` 忽略错误，必须处理所有错误
 - 禁止使用 panic，使用 error 返回值
 - 所有涉及密码/API Key 的日志必须通过 `utils/logger.go` 的 MaskedLogger
+- 禁止使用 Co-Authored-By 提交标记
 
 禁止模仿（历史遗留写法，不代表当前规范）：
 - 无已知历史遗留问题

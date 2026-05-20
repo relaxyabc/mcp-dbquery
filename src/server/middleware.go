@@ -27,19 +27,35 @@ func NewAuthMiddleware(authManager *AuthManager) *AuthMiddleware {
 func (am *AuthMiddleware) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// 健康检查端点无需认证
-		if r.URL.Path == "/health" {
+		if r.URL.Path == "/health" || r.URL.Path == "/healthz" || r.URL.Path == "/ready" {
 			next.ServeHTTP(w, r)
 			return
 		}
 
-		// 从请求头获取API密钥
+		// OAuth discovery 端点无需认证（MCP SDK 自动发现流程）
+		// 包括 /.well-known/* 和 /mcp/.well-known/* 路径变体
+		if strings.HasPrefix(r.URL.Path, "/.well-known/") ||
+			strings.HasPrefix(r.URL.Path, "/mcp/.well-known/") ||
+			r.URL.Path == "/register" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// MCP端点：支持多种认证方式
+		// 1. X-API-Key header（推荐）
+		// 2. Authorization Bearer header
+		// 3. URL query parameter (api_key) - 用于某些MCP客户端
 		apiKey := r.Header.Get("X-API-Key")
 		if apiKey == "" {
-			// 專权限提示，尝试从Authorization头获取
+			// 尝试从Authorization头获取
 			authHeader := r.Header.Get("Authorization")
 			if strings.HasPrefix(authHeader, "Bearer ") {
 				apiKey = strings.TrimPrefix(authHeader, "Bearer ")
 			}
+		}
+		if apiKey == "" {
+			// 尝试从URL查询参数获取（兼容某些客户端）
+			apiKey = r.URL.Query().Get("api_key")
 		}
 
 		// 验证API密钥

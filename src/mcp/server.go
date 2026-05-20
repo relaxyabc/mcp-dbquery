@@ -127,6 +127,7 @@ func (ms *MCPServer) GetServer() *mcp.Server {
 
 // NewHTTPHandler 创建HTTP处理器
 // 使用官方SDK的StreamableHTTP传输
+// 使用 Stateless 模式以避免 session 管理复杂性
 func (ms *MCPServer) NewHTTPHandler() http.Handler {
 	// 创建StreamableHTTP处理器
 	handler := mcp.NewStreamableHTTPHandler(
@@ -136,12 +137,14 @@ func (ms *MCPServer) NewHTTPHandler() http.Handler {
 			return ms.server
 		},
 		&mcp.StreamableHTTPOptions{
-			// 使用SSE流式响应
+			// Stateless 模式：不验证 session ID，每个请求独立处理
+			// 这简化了 HTTP 模式的 session 管理，避免 "session not found" 错误
+			Stateless:    true,
 			JSONResponse: false,
 		},
 	)
 
-	utils.GlobalLogger.Info("创建MCP HTTP处理器 [传输=StreamableHTTP]")
+	utils.GlobalLogger.Info("创建MCP HTTP处理器 [传输=StreamableHTTP] [模式=Stateless]")
 	return handler
 }
 

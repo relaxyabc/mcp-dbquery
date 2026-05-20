@@ -30,7 +30,7 @@ import (
 // 版本信息
 const (
 	Version   = "1.0.0"
-	BuildDate = "2025-05-13"
+	BuildDate = "2025-05-20"
 )
 
 // main 服务器入口函数
@@ -251,6 +251,20 @@ func createHTTPServer(config *server.Config, poolManager *database.PoolManager, 
 	mux.HandleFunc("/healthz", api.HealthzHandler)
 	mux.HandleFunc("/ready", api.NewReadyHandler(healthHandler).ServeHTTP)
 
+	// OAuth discovery 端点（MCP SDK 自动发现）
+	// RFC 9728: oauth-protected-resource 返回资源元数据（空 authorization_servers 表示不使用 OAuth）
+	// RFC 8414: oauth-authorization-server 和 openid-configuration 返回 404（OAuth 服务器不存在）
+	mux.HandleFunc("/.well-known/oauth-protected-resource", handleOAuthProtectedResource)
+	mux.HandleFunc("/.well-known/oauth-protected-resource/", handleOAuthProtectedResource)
+	mux.HandleFunc("/.well-known/oauth-authorization-server", handleOAuthAuthorizationServer404)
+	mux.HandleFunc("/.well-known/oauth-authorization-server/", handleOAuthAuthorizationServer404)
+	mux.HandleFunc("/.well-known/openid-configuration", handleOAuthAuthorizationServer404)
+	mux.HandleFunc("/.well-known/openid-configuration/", handleOAuthAuthorizationServer404)
+	mux.HandleFunc("/mcp/.well-known/", handleOAuthProtectedResource)
+
+	// OAuth register 端点（MCP SDK 动态客户端注册）
+	mux.HandleFunc("/register", handleOAuthRegister)
+
 	// MCP端点（使用StreamableHTTP处理器）
 	mcpHandler := mcpServer.NewHTTPHandler()
 	mux.Handle("/mcp", mcpHandler)
@@ -296,6 +310,50 @@ func startServer(srv *http.Server, host string, port int) {
 			os.Exit(1)
 		}
 	}()
+}
+
+// handleOAuthProtectedResource 处理 OAuth Protected Resource Metadata 请求 (RFC 9728)
+// 返回资源元数据，空 authorization_servers 表示不使用 OAuth 认证
+// MCP SDK 读取此响应后会知道不需要 OAuth，回退到其他认证方式（如 X-API-Key）
+func handleOAuthProtectedResource(w http.ResponseWriter, r *http.Request) {
+	utils.GlobalLogger.Info("OAuth protected resource 请求 [路径=%s]", r.URL.Path)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	// 动态构建 resource URL（使用请求的 host）
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	resourceURL := fmt.Sprintf("%s://%s/mcp", scheme, r.Host)
+
+	// RFC 9728 格式：空的 authorization_servers 表示资源不需要 OAuth
+	w.Write([]byte(fmt.Sprintf(`{
+	"resource": "%s",
+	"authorization_servers": [],
+	"scopes_supported": [],
+	"bearer_methods_supported": ["header"],
+	"resource_documentation": "%s://%s/health"
+}`, resourceURL, scheme, r.Host)))
+}
+
+// handleOAuthAuthorizationServer404 处理 OAuth Authorization Server Metadata 请求 (RFC 8414)
+// 返回 404 表示 OAuth Authorization Server 不存在
+// SDK 在看到 oauth-protected-resource 的空 authorization_servers 后不应再请求此端点
+func handleOAuthAuthorizationServer404(w http.ResponseWriter, r *http.Request) {
+	utils.GlobalLogger.Info("OAuth authorization server 请求 [路径=%s] - 返回404（不支持OAuth）", r.URL.Path)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusNotFound)
+	w.Write([]byte(`{"error":"not_found","error_description":"OAuth authorization server not available. This server uses X-API-Key authentication."}`))
+}
+
+// handleOAuthRegister 处理 OAuth 动态客户端注册请求
+// MCP SDK OAuth 流程的一部分，返回错误表示不支持动态注册
+func handleOAuthRegister(w http.ResponseWriter, r *http.Request) {
+	utils.GlobalLogger.Info("OAuth register 请求 [路径=%s]", r.URL.Path)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusBadRequest)
+	w.Write([]byte(`{"error":"invalid_request","error_description":"Dynamic client registration not supported, use X-API-Key header for authentication"}`))
 }
 
 // waitForShutdown 等待关闭信号并优雅关闭

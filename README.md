@@ -210,12 +210,33 @@ Cursor / VS Code MCP:
 
 **API 调用示例**:
 
+> **注意**: MCP 使用 JSON-RPC 2.0 协议，请求必须包含 `jsonrpc` 和 `id` 字段。
+
+初始化会话（首次请求必需）:
+```bash
+curl -X POST http://localhost:8080/mcp \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your_32_char_api_key" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "initialize",
+    "params": {
+      "protocolVersion": "2025-03-26",
+      "capabilities": {},
+      "clientInfo": {"name": "curl-client", "version": "1.0"}
+    }
+  }'
+```
+
 查询数据:
 ```bash
 curl -X POST http://localhost:8080/mcp \
   -H "Content-Type: application/json" \
   -H "X-API-Key: your_32_char_api_key" \
   -d '{
+    "jsonrpc": "2.0",
+    "id": 2,
     "method": "tools/call",
     "params": {
       "name": "query_mysql_data",
@@ -233,12 +254,14 @@ curl -X POST http://localhost:8080/mcp \
   -H "Content-Type: application/json" \
   -H "X-API-Key: your_32_char_api_key" \
   -d '{
+    "jsonrpc": "2.0",
+    "id": 3,
     "method": "tools/call",
     "params": {
       "name": "get_schema",
       "arguments": {
         "database_id": "mysql-primary",
-        "table": "users"
+        "table_name": "users"
       }
     }
   }'
@@ -250,6 +273,8 @@ curl -X POST http://localhost:8080/mcp \
   -H "Content-Type: application/json" \
   -H "X-API-Key: your_32_char_api_key" \
   -d '{
+    "jsonrpc": "2.0",
+    "id": 4,
     "method": "tools/call",
     "params": {
       "name": "list_tables",
@@ -266,11 +291,13 @@ curl -X POST http://localhost:8080/mcp \
   -H "Content-Type: application/json" \
   -H "X-API-Key: your_32_char_api_key" \
   -d '{
+    "jsonrpc": "2.0",
+    "id": 5,
     "method": "tools/call",
     "params": {
       "name": "query_mongodb_data",
       "arguments": {
-        "database_id": "mongodb-docs",
+        "database_id": "mongo-analytics",
         "collection": "users",
         "filter": {"status": "active"},
         "limit": 10
