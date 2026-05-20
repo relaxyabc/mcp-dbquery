@@ -1,7 +1,9 @@
-package sqlite
+package validator_test
 
 import (
 	"testing"
+
+	"github.com/relaxyabc/mcp-dbquery/src/database/sqlite"
 )
 
 // TestValidateSQLiteQuery_Valid 测试合法的SQLite查询
@@ -23,7 +25,7 @@ func TestValidateSQLiteQuery_Valid(t *testing.T) {
 	}
 
 	for _, query := range validQueries {
-		err := ValidateSQLiteQuery(query)
+		err := sqlite.ValidateSQLiteQuery(query)
 		if err != nil {
 			t.Errorf("合法查询被拒绝: %s, 错误: %s", query, err)
 		}
@@ -52,7 +54,7 @@ func TestValidateSQLiteQuery_Invalid(t *testing.T) {
 	}
 
 	for _, query := range invalidQueries {
-		err := ValidateSQLiteQuery(query)
+		err := sqlite.ValidateSQLiteQuery(query)
 		if err == nil {
 			t.Errorf("非法查询未被拒绝: %s", query)
 		}
@@ -120,7 +122,7 @@ func TestValidateSQLiteQuery_EdgeCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateSQLiteQuery(tt.query)
+			err := sqlite.ValidateSQLiteQuery(tt.query)
 			if tt.wantErr && err == nil {
 				t.Errorf("期望错误但查询被接受: %s", tt.query)
 			}
@@ -147,7 +149,7 @@ func TestIsSafePragma(t *testing.T) {
 	}
 
 	for _, query := range safePragmas {
-		if !isSafePragma(query) {
+		if !sqlite.IsSafePragma(query) {
 			t.Errorf("安全PRAGMA被判定为不安全: %s", query)
 		}
 	}
@@ -165,21 +167,20 @@ func TestIsSafePragma(t *testing.T) {
 	}
 
 	for _, query := range unsafePragmas {
-		if isSafePragma(query) {
+		if sqlite.IsSafePragma(query) {
 			t.Errorf("不安全PRAGMA被判定为安全: %s", query)
 		}
 	}
 }
 
-// TestGetQueryType 测试查询类型获取
-func TestGetQueryType(t *testing.T) {
+// TestGetQueryType_SQLite 测试查询类型获取
+func TestGetQueryType_SQLite(t *testing.T) {
 	tests := []struct {
 		query    string
 		expected string
 	}{
 		{"SELECT * FROM users", "SELECT"},
 		{"PRAGMA table_info(users)", "PRAGMA"},
-		// 写操作类型返回UNKNOWN（因为不是合法类型）
 		{"INSERT INTO users VALUES (1)", "UNKNOWN"},
 		{"UPDATE users SET name = 'test'", "UNKNOWN"},
 		{"", "UNKNOWN"},
@@ -187,22 +188,22 @@ func TestGetQueryType(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		result := GetQueryType(tt.query)
+		result := sqlite.GetQueryType(tt.query)
 		if result != tt.expected {
 			t.Errorf("GetQueryType(%s) = %s, expected %s", tt.query, result, tt.expected)
 		}
 	}
 }
 
-// TestIsReadOnlyQuery 测试只读查询判断
-func TestIsReadOnlyQuery(t *testing.T) {
+// TestIsReadOnlyQuery_SQLite 测试只读查询判断
+func TestIsReadOnlyQuery_SQLite(t *testing.T) {
 	readOnlyQueries := []string{
 		"SELECT * FROM users",
 		"PRAGMA table_info(users)",
 	}
 
 	for _, query := range readOnlyQueries {
-		if !IsReadOnlyQuery(query) {
+		if !sqlite.IsReadOnlyQuery(query) {
 			t.Errorf("只读查询被判定为非只读: %s", query)
 		}
 	}
@@ -214,7 +215,7 @@ func TestIsReadOnlyQuery(t *testing.T) {
 	}
 
 	for _, query := range writeQueries {
-		if IsReadOnlyQuery(query) {
+		if sqlite.IsReadOnlyQuery(query) {
 			t.Errorf("写操作查询被判定为只读: %s", query)
 		}
 	}

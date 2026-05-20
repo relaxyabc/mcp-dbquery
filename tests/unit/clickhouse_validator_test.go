@@ -1,7 +1,9 @@
-package clickhouse
+package validator_test
 
 import (
 	"testing"
+
+	"github.com/relaxyabc/mcp-dbquery/src/database/clickhouse"
 )
 
 // TestValidateClickHouseQuery_Valid 测试合法的ClickHouse查询
@@ -31,7 +33,7 @@ func TestValidateClickHouseQuery_Valid(t *testing.T) {
 	}
 
 	for _, query := range validQueries {
-		err := ValidateClickHouseQuery(query)
+		err := clickhouse.ValidateClickHouseQuery(query)
 		if err != nil {
 			t.Errorf("合法查询被拒绝: %s, 错误: %s", query, err)
 		}
@@ -77,7 +79,7 @@ func TestValidateClickHouseQuery_Invalid(t *testing.T) {
 	}
 
 	for _, query := range invalidQueries {
-		err := ValidateClickHouseQuery(query)
+		err := clickhouse.ValidateClickHouseQuery(query)
 		if err == nil {
 			t.Errorf("非法查询未被拒绝: %s", query)
 		}
@@ -130,7 +132,7 @@ func TestValidateClickHouseQuery_EdgeCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateClickHouseQuery(tt.query)
+			err := clickhouse.ValidateClickHouseQuery(tt.query)
 			if tt.wantErr && err == nil {
 				t.Errorf("期望错误但查询被接受: %s", tt.query)
 			}
@@ -141,8 +143,8 @@ func TestValidateClickHouseQuery_EdgeCases(t *testing.T) {
 	}
 }
 
-// TestGetQueryType 测试查询类型获取
-func TestGetQueryType(t *testing.T) {
+// TestGetQueryType_ClickHouse 测试查询类型获取
+func TestGetQueryType_ClickHouse(t *testing.T) {
 	tests := []struct {
 		query    string
 		expected string
@@ -159,15 +161,15 @@ func TestGetQueryType(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		result := GetQueryType(tt.query)
+		result := clickhouse.GetQueryType(tt.query)
 		if result != tt.expected {
 			t.Errorf("GetQueryType(%s) = %s, expected %s", tt.query, result, tt.expected)
 		}
 	}
 }
 
-// TestIsReadOnlyQuery 测试只读查询判断
-func TestIsReadOnlyQuery(t *testing.T) {
+// TestIsReadOnlyQuery_ClickHouse 测试只读查询判断
+func TestIsReadOnlyQuery_ClickHouse(t *testing.T) {
 	readOnlyQueries := []string{
 		"SELECT * FROM users",
 		"SHOW DATABASES",
@@ -175,7 +177,7 @@ func TestIsReadOnlyQuery(t *testing.T) {
 	}
 
 	for _, query := range readOnlyQueries {
-		if !IsReadOnlyQuery(query) {
+		if !clickhouse.IsReadOnlyQuery(query) {
 			t.Errorf("只读查询被判定为非只读: %s", query)
 		}
 	}
@@ -188,7 +190,7 @@ func TestIsReadOnlyQuery(t *testing.T) {
 	}
 
 	for _, query := range writeQueries {
-		if IsReadOnlyQuery(query) {
+		if clickhouse.IsReadOnlyQuery(query) {
 			t.Errorf("写操作查询被判定为只读: %s", query)
 		}
 	}

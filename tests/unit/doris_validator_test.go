@@ -1,7 +1,9 @@
-package doris
+package validator_test
 
 import (
 	"testing"
+
+	"github.com/relaxyabc/mcp-dbquery/src/database/doris"
 )
 
 // TestValidateDorisQuery_Valid 测试合法的Doris查询
@@ -33,7 +35,7 @@ func TestValidateDorisQuery_Valid(t *testing.T) {
 	}
 
 	for _, query := range validQueries {
-		err := ValidateDorisQuery(query)
+		err := doris.ValidateDorisQuery(query)
 		if err != nil {
 			t.Errorf("合法查询被拒绝: %s, 错误: %s", query, err)
 		}
@@ -82,7 +84,7 @@ func TestValidateDorisQuery_Invalid(t *testing.T) {
 	}
 
 	for _, query := range invalidQueries {
-		err := ValidateDorisQuery(query)
+		err := doris.ValidateDorisQuery(query)
 		if err == nil {
 			t.Errorf("非法查询未被拒绝: %s", query)
 		}
@@ -145,7 +147,7 @@ func TestValidateDorisQuery_EdgeCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateDorisQuery(tt.query)
+			err := doris.ValidateDorisQuery(tt.query)
 			if tt.wantErr && err == nil {
 				t.Errorf("期望错误但查询被接受: %s", tt.query)
 			}
@@ -156,8 +158,8 @@ func TestValidateDorisQuery_EdgeCases(t *testing.T) {
 	}
 }
 
-// TestGetQueryType 测试查询类型获取
-func TestGetQueryType(t *testing.T) {
+// TestGetQueryType_Doris 测试查询类型获取
+func TestGetQueryType_Doris(t *testing.T) {
 	tests := []struct {
 		query    string
 		expected string
@@ -175,15 +177,15 @@ func TestGetQueryType(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		result := GetQueryType(tt.query)
+		result := doris.GetQueryType(tt.query)
 		if result != tt.expected {
 			t.Errorf("GetQueryType(%s) = %s, expected %s", tt.query, result, tt.expected)
 		}
 	}
 }
 
-// TestIsReadOnlyQuery 测试只读查询判断
-func TestIsReadOnlyQuery(t *testing.T) {
+// TestIsReadOnlyQuery_Doris 测试只读查询判断
+func TestIsReadOnlyQuery_Doris(t *testing.T) {
 	readOnlyQueries := []string{
 		"SELECT * FROM users",
 		"SHOW DATABASES",
@@ -192,7 +194,7 @@ func TestIsReadOnlyQuery(t *testing.T) {
 	}
 
 	for _, query := range readOnlyQueries {
-		if !IsReadOnlyQuery(query) {
+		if !doris.IsReadOnlyQuery(query) {
 			t.Errorf("只读查询被判定为非只读: %s", query)
 		}
 	}
@@ -206,7 +208,7 @@ func TestIsReadOnlyQuery(t *testing.T) {
 	}
 
 	for _, query := range writeQueries {
-		if IsReadOnlyQuery(query) {
+		if doris.IsReadOnlyQuery(query) {
 			t.Errorf("写操作查询被判定为只读: %s", query)
 		}
 	}

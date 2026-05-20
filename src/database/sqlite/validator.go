@@ -109,7 +109,7 @@ func ValidateSQLiteQuery(query string) error {
 
 	// 特殊处理PRAGMA命令
 	if firstWord == "PRAGMA" {
-		if !isSafePragma(query) {
+		if !IsSafePragma(query) {
 			return fmt.Errorf("PRAGMA命令不安全：只允许 table_info, index_list 等查询类PRAGMA")
 		}
 	}
@@ -122,8 +122,8 @@ func ValidateSQLiteQuery(query string) error {
 	return nil
 }
 
-// isSafePragma 检查PRAGMA命令是否为安全的只读类型
-func isSafePragma(query string) bool {
+// IsSafePragma 检查PRAGMA命令是否为安全的只读类型
+func IsSafePragma(query string) bool {
 	// 提取PRAGMA后面的命令名
 	upperQuery := strings.ToUpper(query)
 

@@ -1,7 +1,9 @@
-package sqlserver
+package validator_test
 
 import (
 	"testing"
+
+	"github.com/relaxyabc/mcp-dbquery/src/database/sqlserver"
 )
 
 // TestValidateSQLServerQuery_Valid 测试合法的SQL Server查询
@@ -34,7 +36,7 @@ func TestValidateSQLServerQuery_Valid(t *testing.T) {
 	}
 
 	for _, query := range validQueries {
-		err := ValidateSQLServerQuery(query)
+		err := sqlserver.ValidateSQLServerQuery(query)
 		if err != nil {
 			t.Errorf("合法查询被拒绝: %s, 错误: %s", query, err)
 		}
@@ -89,7 +91,7 @@ func TestValidateSQLServerQuery_Invalid(t *testing.T) {
 	}
 
 	for _, query := range invalidQueries {
-		err := ValidateSQLServerQuery(query)
+		err := sqlserver.ValidateSQLServerQuery(query)
 		if err == nil {
 			t.Errorf("非法查询未被拒绝: %s", query)
 		}
@@ -152,7 +154,7 @@ func TestValidateSQLServerQuery_EdgeCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateSQLServerQuery(tt.query)
+			err := sqlserver.ValidateSQLServerQuery(tt.query)
 			if tt.wantErr && err == nil {
 				t.Errorf("期望错误但查询被接受: %s", tt.query)
 			}
@@ -163,8 +165,8 @@ func TestValidateSQLServerQuery_EdgeCases(t *testing.T) {
 	}
 }
 
-// TestGetQueryType 测试查询类型获取
-func TestGetQueryType(t *testing.T) {
+// TestGetQueryType_SQLServer 测试查询类型获取
+func TestGetQueryType_SQLServer(t *testing.T) {
 	tests := []struct {
 		query    string
 		expected string
@@ -180,15 +182,15 @@ func TestGetQueryType(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		result := GetQueryType(tt.query)
+		result := sqlserver.GetQueryType(tt.query)
 		if result != tt.expected {
 			t.Errorf("GetQueryType(%s) = %s, expected %s", tt.query, result, tt.expected)
 		}
 	}
 }
 
-// TestIsReadOnlyQuery 测试只读查询判断
-func TestIsReadOnlyQuery(t *testing.T) {
+// TestIsReadOnlyQuery_SQLServer 测试只读查询判断
+func TestIsReadOnlyQuery_SQLServer(t *testing.T) {
 	readOnlyQueries := []string{
 		"SELECT * FROM users",
 		"WITH cte AS (SELECT 1) SELECT * FROM cte",
@@ -196,7 +198,7 @@ func TestIsReadOnlyQuery(t *testing.T) {
 	}
 
 	for _, query := range readOnlyQueries {
-		if !IsReadOnlyQuery(query) {
+		if !sqlserver.IsReadOnlyQuery(query) {
 			t.Errorf("只读查询被判定为非只读: %s", query)
 		}
 	}
@@ -210,7 +212,7 @@ func TestIsReadOnlyQuery(t *testing.T) {
 	}
 
 	for _, query := range writeQueries {
-		if IsReadOnlyQuery(query) {
+		if sqlserver.IsReadOnlyQuery(query) {
 			t.Errorf("写操作查询被判定为只读: %s", query)
 		}
 	}
