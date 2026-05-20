@@ -69,7 +69,8 @@ func (pm *PoolManager) RegisterConfig(config DatabaseConfig) error {
 	return nil
 }
 
-// GetOrCreatePool 获取或创建数据库驱动实例
+// GetOrCreatePool 获取或创建数据库驱动实例（统一接口）
+// 使用全局注册表获取驱动构造函数
 func (pm *PoolManager) GetOrCreatePool(ctx context.Context, id string) (Database, error) {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
@@ -92,17 +93,13 @@ func (pm *PoolManager) GetOrCreatePool(ctx context.Context, id string) (Database
 		return nil, fmt.Errorf("连接配置 %s 不存在", id)
 	}
 
-	// 检测MySQL协议兼容数据库
-	dbType := config.Type
-	if config.ProtocolCompat != "" {
-		// protocol_compatible标记，使用MySQL驱动但配特定验证器
-		dbType = DatabaseTypeMySQL
-	}
+	// 确定实际驱动类型（处理协议兼容）
+	actualType := GetActualDriverType(config)
 
-	// 获取驱动构造函数
-	constructor, exists := pm.registry[dbType]
+	// 从全局注册表获取驱动构造函数
+	constructor, exists := GetRegisteredDriver(actualType)
 	if !exists {
-		return nil, fmt.Errorf("数据库类型 %s 未注册驱动", dbType)
+		return nil, fmt.Errorf("数据库类型 %s 未注册驱动，请检查是否已导入驱动包", actualType)
 	}
 
 	// 创建驱动实例

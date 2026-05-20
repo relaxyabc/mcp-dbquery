@@ -11,6 +11,13 @@ import (
 	"github.com/relaxyabc/mcp-dbquery/src/utils"
 )
 
+// init() 自动注册 PostgreSQL 驱动到全局注册表
+func init() {
+	database.RegisterDriver(database.DatabaseTypePostgreSQL, func(config database.DatabaseConfig) database.Database {
+		return NewPostgresDriver(config)
+	})
+}
+
 // PostgresDriver PostgreSQL数据库驱动实现
 type PostgresDriver struct {
 	ID     string

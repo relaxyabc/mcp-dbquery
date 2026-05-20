@@ -11,7 +11,7 @@ import (
 	"github.com/relaxyabc/mcp-dbquery/src/utils"
 )
 
-// SchemaHandler Schema查询处理器
+// SchemaHandler Schema查询处理器（重构：统一驱动获取）
 func SchemaHandler(poolManager *database.PoolManager) func(ctx context.Context, args map[string]interface{}) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, args map[string]interface{}) (*mcp.CallToolResult, error) {
 		databaseID, _ := args["database_id"].(string)
@@ -26,96 +26,50 @@ func SchemaHandler(poolManager *database.PoolManager) func(ctx context.Context, 
 
 		utils.GlobalLogger.Info("Schema查询请求 [连接=%s] [表=%s]", databaseID, tableName)
 
-		// 获取数据库配置，根据类型直接选择驱动
-		config, exists := poolManager.GetConfig(databaseID)
-		if !exists {
+		// 使用统一接口获取驱动
+		driver, err := GetDriver(ctx, poolManager, databaseID)
+		if err != nil {
 			return &mcp.CallToolResult{
 				IsError: true,
-				Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("未找到数据库配置: %s", databaseID)}},
+				Content: []mcp.Content{&mcp.TextContent{Text: err.Error()}},
 			}, nil
 		}
 
-		utils.GlobalLogger.Info("数据库配置 [ID=%s] [类型=%s]", databaseID, config.Type)
+		utils.GlobalLogger.Info("驱动获取成功 [ID=%s] [类型=%s]", databaseID, driver.GetType())
 
-		// 根据数据库类型选择驱动
-		switch config.Type {
-		case database.DatabaseTypeMongoDB:
-			mongoDriver, err := getOrConnectMongo(ctx, poolManager, databaseID)
+		// 统一调用接口方法
+		if tableName != "" {
+			schema, err := driver.GetSchema(ctx, tableName)
 			if err != nil {
 				return &mcp.CallToolResult{
 					IsError: true,
-					Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("获取MongoDB驱动失败: %s", err)}},
+					Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("获取结构失败: %s", err)}},
 				}, nil
 			}
-			if tableName != "" {
-				schema, err := mongoDriver.GetSchema(ctx, tableName)
-				if err != nil {
-					return &mcp.CallToolResult{
-						IsError: true,
-						Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("获取集合结构失败: %s", err)}},
-					}, nil
-				}
-				resultJSON, _ := json.Marshal(schema.ToJSON())
-				return &mcp.CallToolResult{
-					Content: []mcp.Content{&mcp.TextContent{Text: string(resultJSON)}},
-				}, nil
-			}
-			collections, err := mongoDriver.ListTables(ctx)
-			if err != nil {
-				return &mcp.CallToolResult{
-					IsError: true,
-					Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("获取集合列表失败: %s", err)}},
-				}, nil
-			}
-			result := map[string]interface{}{
-				"database_id":      databaseID,
-				"type":             "mongodb",
-				"collections":      collections,
-				"collection_count": len(collections),
-			}
-			resultJSON, _ := json.Marshal(result)
-			return &mcp.CallToolResult{
-				Content: []mcp.Content{&mcp.TextContent{Text: string(resultJSON)}},
-			}, nil
-
-		default:
-			mysqlDriver, err := getOrConnectMySQL(ctx, poolManager, databaseID)
-			if err != nil {
-				return &mcp.CallToolResult{
-					IsError: true,
-					Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("获取MySQL驱动失败: %s", err)}},
-				}, nil
-			}
-			if tableName != "" {
-				schema, err := mysqlDriver.GetSchema(ctx, tableName)
-				if err != nil {
-					return &mcp.CallToolResult{
-						IsError: true,
-						Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("获取表结构失败: %s", err)}},
-					}, nil
-				}
-				resultJSON, _ := json.Marshal(schema.ToJSON())
-				return &mcp.CallToolResult{
-					Content: []mcp.Content{&mcp.TextContent{Text: string(resultJSON)}},
-				}, nil
-			}
-			tables, err := mysqlDriver.ListTables(ctx)
-			if err != nil {
-				return &mcp.CallToolResult{
-					IsError: true,
-					Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("获取表列表失败: %s", err)}},
-				}, nil
-			}
-			result := map[string]interface{}{
-				"database_id": databaseID,
-				"type":        "mysql",
-				"tables":      tables,
-				"table_count": len(tables),
-			}
-			resultJSON, _ := json.Marshal(result)
+			resultJSON, _ := json.Marshal(schema.ToJSON())
 			return &mcp.CallToolResult{
 				Content: []mcp.Content{&mcp.TextContent{Text: string(resultJSON)}},
 			}, nil
 		}
+
+		// 列出所有表/集合
+		tables, err := driver.ListTables(ctx)
+		if err != nil {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("获取列表失败: %s", err)}},
+			}, nil
+		}
+
+		result := map[string]interface{}{
+			"database_id": databaseID,
+			"type":        driver.GetType(),
+			"tables":      tables,
+			"table_count": len(tables),
+		}
+		resultJSON, _ := json.Marshal(result)
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: string(resultJSON)}},
+		}, nil
 	}
 }

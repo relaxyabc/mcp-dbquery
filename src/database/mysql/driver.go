@@ -9,8 +9,36 @@ import (
 	_ "github.com/go-sql-driver/mysql" // MySQL驱动
 
 	"github.com/relaxyabc/mcp-dbquery/src/database"
+	"github.com/relaxyabc/mcp-dbquery/src/database/clickhouse"
+	"github.com/relaxyabc/mcp-dbquery/src/database/doris"
 	"github.com/relaxyabc/mcp-dbquery/src/utils"
 )
+
+// init() 自动注册 MySQL 驱动及 MySQL 协议兼容数据库到全局注册表
+func init() {
+	// 注册 MySQL 驱动
+	database.RegisterDriver(database.DatabaseTypeMySQL, func(config database.DatabaseConfig) database.Database {
+		return NewMySQLDriver(config)
+	})
+
+	// 注册 MySQL 协议兼容数据库（使用 MySQL 驱动 + 自定义验证器）
+	database.RegisterDriver(database.DatabaseTypeClickHouse, func(config database.DatabaseConfig) database.Database {
+		return NewMySQLDriverWithValidator(config, clickhouse.ValidateClickHouseQuery)
+	})
+
+	database.RegisterDriver(database.DatabaseTypeDoris, func(config database.DatabaseConfig) database.Database {
+		return NewMySQLDriverWithValidator(config, doris.ValidateDorisQuery)
+	})
+
+	// MariaDB 和 TiDB 使用标准 MySQL 验证器
+	database.RegisterDriver(database.DatabaseTypeMariaDB, func(config database.DatabaseConfig) database.Database {
+		return NewMySQLDriver(config)
+	})
+
+	database.RegisterDriver(database.DatabaseTypeTiDB, func(config database.DatabaseConfig) database.Database {
+		return NewMySQLDriver(config)
+	})
+}
 
 // MySQLDriver MySQL数据库驱动实现
 type MySQLDriver struct {

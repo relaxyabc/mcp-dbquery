@@ -11,7 +11,7 @@ import (
 	"github.com/relaxyabc/mcp-dbquery/src/utils"
 )
 
-// ListTablesHandler 表列表处理器
+// ListTablesHandler 表列表处理器（重构：统一驱动获取）
 func ListTablesHandler(poolManager *database.PoolManager) func(ctx context.Context, args map[string]interface{}) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, args map[string]interface{}) (*mcp.CallToolResult, error) {
 		databaseID, _ := args["database_id"].(string)
@@ -25,81 +25,37 @@ func ListTablesHandler(poolManager *database.PoolManager) func(ctx context.Conte
 
 		utils.GlobalLogger.Info("表列表查询请求 [连接=%s]", databaseID)
 
-		// 获取数据库配置，根据类型直接选择驱动
-		config, exists := poolManager.GetConfig(databaseID)
-		if !exists {
+		// 使用统一接口获取驱动
+		driver, err := GetDriver(ctx, poolManager, databaseID)
+		if err != nil {
 			return &mcp.CallToolResult{
 				IsError: true,
-				Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("未找到数据库配置: %s", databaseID)}},
+				Content: []mcp.Content{&mcp.TextContent{Text: err.Error()}},
 			}, nil
 		}
 
-		utils.GlobalLogger.Info("数据库配置 [ID=%s] [类型=%s]", databaseID, config.Type)
+		utils.GlobalLogger.Info("驱动获取成功 [ID=%s] [类型=%s]", databaseID, driver.GetType())
 
-		// 根据数据库类型选择驱动
-		switch config.Type {
-		case database.DatabaseTypeMongoDB:
-			utils.GlobalLogger.Info("尝试获取MongoDB驱动 [ID=%s]", databaseID)
-			mongoDriver, err := getOrConnectMongo(ctx, poolManager, databaseID)
-			if err != nil {
-				utils.GlobalLogger.Error("获取MongoDB驱动失败: %s", err)
-				return &mcp.CallToolResult{
-					IsError: true,
-					Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("获取MongoDB驱动失败: %s", err)}},
-				}, nil
-			}
-			utils.GlobalLogger.Info("MongoDB驱动获取成功，开始列出集合...")
-			collections, err := mongoDriver.ListTables(ctx)
-			if err != nil {
-				utils.GlobalLogger.Error("获取集合列表失败: %s", err)
-				return &mcp.CallToolResult{
-					IsError: true,
-					Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("获取集合列表失败: %s", err)}},
-				}, nil
-			}
-
-			utils.GlobalLogger.Info("MongoDB集合列表完成 [集合数=%d]", len(collections))
-			resultJSON, _ := json.Marshal(map[string]interface{}{
-				"database_id":      databaseID,
-				"type":             "mongodb",
-				"collections":      collections,
-				"collection_count": len(collections),
-			})
+		// 统一调用 ListTables 接口方法
+		tables, err := driver.ListTables(ctx)
+		if err != nil {
 			return &mcp.CallToolResult{
-				Content: []mcp.Content{&mcp.TextContent{Text: string(resultJSON)}},
-			}, nil
-
-		default:
-			// MySQL 及其他 SQL 数据库
-			utils.GlobalLogger.Info("尝试获取MySQL驱动 [ID=%s]", databaseID)
-			mysqlDriver, err := getOrConnectMySQL(ctx, poolManager, databaseID)
-			if err != nil {
-				utils.GlobalLogger.Error("获取MySQL驱动失败: %s", err)
-				return &mcp.CallToolResult{
-					IsError: true,
-					Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("获取MySQL驱动失败: %s", err)}},
-				}, nil
-			}
-			utils.GlobalLogger.Info("MySQL驱动获取成功，开始列出表...")
-			tables, err := mysqlDriver.ListTables(ctx)
-			if err != nil {
-				utils.GlobalLogger.Error("获取表列表失败: %s", err)
-				return &mcp.CallToolResult{
-					IsError: true,
-					Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("获取表列表失败: %s", err)}},
-				}, nil
-			}
-
-			utils.GlobalLogger.Info("MySQL表列表完成 [表数=%d]", len(tables))
-			resultJSON, _ := json.Marshal(map[string]interface{}{
-				"database_id": databaseID,
-				"type":        "mysql",
-				"tables":      tables,
-				"table_count": len(tables),
-			})
-			return &mcp.CallToolResult{
-				Content: []mcp.Content{&mcp.TextContent{Text: string(resultJSON)}},
+				IsError: true,
+				Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("获取表列表失败: %s", err)}},
 			}, nil
 		}
+
+		utils.GlobalLogger.Info("表列表查询完成 [连接=%s] [表数=%d]", databaseID, len(tables))
+
+		result := map[string]interface{}{
+			"database_id": databaseID,
+			"type":        driver.GetType(),
+			"tables":      tables,
+			"table_count": len(tables),
+		}
+		resultJSON, _ := json.Marshal(result)
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: string(resultJSON)}},
+		}, nil
 	}
 }

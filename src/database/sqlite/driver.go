@@ -12,6 +12,13 @@ import (
 	"github.com/relaxyabc/mcp-dbquery/src/utils"
 )
 
+// init() 自动注册 SQLite 驱动到全局注册表
+func init() {
+	database.RegisterDriver(database.DatabaseTypeSQLite, func(config database.DatabaseConfig) database.Database {
+		return NewSQLiteDriver(config)
+	})
+}
+
 // SQLiteDriver SQLite数据库驱动实现
 type SQLiteDriver struct {
 	ID     string

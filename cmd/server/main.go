@@ -14,14 +14,15 @@ import (
 
 	"github.com/relaxyabc/mcp-dbquery/src/api"
 	"github.com/relaxyabc/mcp-dbquery/src/database"
-	"github.com/relaxyabc/mcp-dbquery/src/database/clickhouse"
-	"github.com/relaxyabc/mcp-dbquery/src/database/doris"
-	"github.com/relaxyabc/mcp-dbquery/src/database/mongodb"
-	"github.com/relaxyabc/mcp-dbquery/src/database/mysql"
-	"github.com/relaxyabc/mcp-dbquery/src/database/oracle"
-	"github.com/relaxyabc/mcp-dbquery/src/database/postgres"
-	"github.com/relaxyabc/mcp-dbquery/src/database/sqlite"
-	"github.com/relaxyabc/mcp-dbquery/src/database/sqlserver"
+	// 驱动包导入（触发 init() 自注册）
+	_ "github.com/relaxyabc/mcp-dbquery/src/database/clickhouse"
+	_ "github.com/relaxyabc/mcp-dbquery/src/database/doris"
+	_ "github.com/relaxyabc/mcp-dbquery/src/database/mongodb"
+	_ "github.com/relaxyabc/mcp-dbquery/src/database/mysql"
+	_ "github.com/relaxyabc/mcp-dbquery/src/database/oracle"
+	_ "github.com/relaxyabc/mcp-dbquery/src/database/postgres"
+	_ "github.com/relaxyabc/mcp-dbquery/src/database/sqlite"
+	_ "github.com/relaxyabc/mcp-dbquery/src/database/sqlserver"
 	"github.com/relaxyabc/mcp-dbquery/src/mcp"
 	"github.com/relaxyabc/mcp-dbquery/src/server"
 	"github.com/relaxyabc/mcp-dbquery/src/utils"
@@ -190,44 +191,12 @@ func runSTDIOMode(ctx context.Context, poolManager *database.PoolManager, mcpSer
 }
 
 // connectAllDatabases 连接所有数据库（启动时验证）
+// 驱动已通过 init() 自注册到全局注册表，无需手动注册
 func connectAllDatabases(ctx context.Context, poolManager *database.PoolManager, dbConfigs map[string]database.DatabaseConfig) map[string]error {
 	errors := make(map[string]error)
 
-	// 注册驱动构造函数（使用包装函数返回Database接口）
-	poolManager.RegisterDriver(database.DatabaseTypeMySQL, func(config database.DatabaseConfig) database.Database {
-		return mysql.NewMySQLDriver(config)
-	})
-	poolManager.RegisterDriver(database.DatabaseTypeMongoDB, func(config database.DatabaseConfig) database.Database {
-		return mongodb.NewMongoDBDriver(config)
-	})
-	poolManager.RegisterDriver(database.DatabaseTypePostgreSQL, func(config database.DatabaseConfig) database.Database {
-		return postgres.NewPostgresDriver(config)
-	})
-	poolManager.RegisterDriver(database.DatabaseTypeSQLite, func(config database.DatabaseConfig) database.Database {
-		return sqlite.NewSQLiteDriver(config)
-	})
-	poolManager.RegisterDriver(database.DatabaseTypeSQLServer, func(config database.DatabaseConfig) database.Database {
-		return sqlserver.NewSQLServerDriver(config)
-	})
-	poolManager.RegisterDriver(database.DatabaseTypeOracle, func(config database.DatabaseConfig) database.Database {
-		return oracle.NewOracleDriver(config)
-	})
-	// MySQL协议兼容数据库使用MySQL驱动+自定义验证器
-	poolManager.RegisterDriver(database.DatabaseTypeClickHouse, func(config database.DatabaseConfig) database.Database {
-		return mysql.NewMySQLDriverWithValidator(config, clickhouse.ValidateClickHouseQuery)
-	})
-	poolManager.RegisterDriver(database.DatabaseTypeDoris, func(config database.DatabaseConfig) database.Database {
-		return mysql.NewMySQLDriverWithValidator(config, doris.ValidateDorisQuery)
-	})
-	poolManager.RegisterDriver(database.DatabaseTypeMariaDB, func(config database.DatabaseConfig) database.Database {
-		return mysql.NewMySQLDriver(config) // MariaDB使用标准MySQL验证器
-	})
-	poolManager.RegisterDriver(database.DatabaseTypeTiDB, func(config database.DatabaseConfig) database.Database {
-		return mysql.NewMySQLDriver(config) // TiDB使用标准MySQL验证器
-	})
-
 	for id, config := range dbConfigs {
-		// 使用注册表获取驱动
+		// 使用全局注册表获取驱动
 		_, err := poolManager.GetOrCreatePool(ctx, id)
 		if err != nil {
 			errors[id] = err

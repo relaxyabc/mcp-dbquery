@@ -15,7 +15,7 @@ import (
 	"github.com/relaxyabc/mcp-dbquery/src/utils"
 )
 
-// MySQLQueryHandler MySQL查询处理器
+// MySQLQueryHandler MySQL查询处理器（重构：统一驱动获取）
 func MySQLQueryHandler(poolManager *database.PoolManager) func(ctx context.Context, args map[string]interface{}) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, args map[string]interface{}) (*mcp.CallToolResult, error) {
 		start := time.Now()
@@ -48,13 +48,22 @@ func MySQLQueryHandler(poolManager *database.PoolManager) func(ctx context.Conte
 
 		utils.GlobalLogger.Info("MySQL查询请求 [连接=%s] [查询=%s]", databaseID, query)
 
-		// 获取MySQL驱动实例
-		driver, err := getOrConnectMySQL(ctx, poolManager, databaseID)
+		// 使用统一接口获取驱动
+		driverInterface, err := GetDriver(ctx, poolManager, databaseID)
 		if err != nil {
-			utils.GlobalLogger.Error("获取MySQL驱动失败: %s", err)
+			utils.GlobalLogger.Error("获取驱动失败: %s", err)
 			return &mcp.CallToolResult{
 				IsError: true,
-				Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("数据库连接失败: %s", err)}},
+				Content: []mcp.Content{&mcp.TextContent{Text: err.Error()}},
+			}, nil
+		}
+
+		// 类型断言为 MySQL 驱动（用于调用 ExecuteSelectQuery）
+		driver, ok := driverInterface.(*mysql.MySQLDriver)
+		if !ok {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{&mcp.TextContent{Text: "该连接不是 MySQL 类型驱动"}},
 			}, nil
 		}
 
@@ -89,7 +98,7 @@ func MySQLQueryHandler(poolManager *database.PoolManager) func(ctx context.Conte
 	}
 }
 
-// MongoDBQueryHandler MongoDB查询处理器
+// MongoDBQueryHandler MongoDB查询处理器（重构：统一驱动获取）
 func MongoDBQueryHandler(poolManager *database.PoolManager) func(ctx context.Context, args map[string]interface{}) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, args map[string]interface{}) (*mcp.CallToolResult, error) {
 		// 提取参数
@@ -123,13 +132,22 @@ func MongoDBQueryHandler(poolManager *database.PoolManager) func(ctx context.Con
 
 		utils.GlobalLogger.Info("MongoDB查询请求 [连接=%s] [集合=%s]", databaseID, collection)
 
-		// 获取MongoDB驱动实例
-		driver, err := getOrConnectMongo(ctx, poolManager, databaseID)
+		// 使用统一接口获取驱动
+		driverInterface, err := GetDriver(ctx, poolManager, databaseID)
 		if err != nil {
-			utils.GlobalLogger.Error("获取MongoDB驱动失败: %s", err)
+			utils.GlobalLogger.Error("获取驱动失败: %s", err)
 			return &mcp.CallToolResult{
 				IsError: true,
-				Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("数据库连接失败: %s", err)}},
+				Content: []mcp.Content{&mcp.TextContent{Text: err.Error()}},
+			}, nil
+		}
+
+		// 类型断言为 MongoDB 驱动（用于调用 ExecuteFind）
+		driver, ok := driverInterface.(*mongodb.MongoDBDriver)
+		if !ok {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{&mcp.TextContent{Text: "该连接不是 MongoDB 类型驱动"}},
 			}, nil
 		}
 
@@ -158,75 +176,4 @@ func MongoDBQueryHandler(poolManager *database.PoolManager) func(ctx context.Con
 			Content: []mcp.Content{&mcp.TextContent{Text: string(resultJSON)}},
 		}, nil
 	}
-}
-
-// getOrConnectMySQL 获取或连接MySQL驱动
-func getOrConnectMySQL(ctx context.Context, poolManager *database.PoolManager, databaseID string) (*mysql.MySQLDriver, error) {
-	// 尝试从pool manager获取已连接的驱动
-	driverInterface, exists := poolManager.GetMySQLDriver(databaseID)
-	if exists {
-		driver, ok := driverInterface.(*mysql.MySQLDriver)
-		if ok && driver.IsConnected() {
-			return driver, nil
-		}
-	}
-
-	// 驱动不存在或未连接，创建新驱动
-	config, exists := poolManager.GetConfig(databaseID)
-	if !exists {
-		return nil, fmt.Errorf("未找到数据库配置: %s", databaseID)
-	}
-
-	driver := mysql.NewMySQLDriver(config)
-	if err := driver.Connect(ctx); err != nil {
-		return nil, err
-	}
-
-	// 存储到pool manager
-	poolManager.SetMySQLDriver(databaseID, driver)
-	return driver, nil
-}
-
-// getOrConnectMongo 获取或连接MongoDB驱动
-func getOrConnectMongo(ctx context.Context, poolManager *database.PoolManager, databaseID string) (*mongodb.MongoDBDriver, error) {
-	utils.GlobalLogger.Info("getOrConnectMongo: 开始获取MongoDB驱动 [ID=%s]", databaseID)
-
-	// 尝试从pool manager获取已连接的驱动
-	driverInterface, exists := poolManager.GetMongoDriver(databaseID)
-	utils.GlobalLogger.Info("getOrConnectMongo: PoolManager查询结果 [存在=%v]", exists)
-
-	if exists {
-		driver, ok := driverInterface.(*mongodb.MongoDBDriver)
-		utils.GlobalLogger.Info("getOrConnectMongo: 类型转换结果 [成功=%v]", ok)
-		if ok {
-			isConnected := driver.IsConnected()
-			utils.GlobalLogger.Info("getOrConnectMongo: 连接状态检查 [IsConnected=%v]", isConnected)
-			if isConnected {
-				utils.GlobalLogger.Info("getOrConnectMongo: 使用已存在的连接")
-				return driver, nil
-			}
-			utils.GlobalLogger.Info("getOrConnectMongo: 驱动存在但未连接，需要重连")
-		}
-	}
-
-	// 驱动不存在或未连接，创建新驱动
-	config, exists := poolManager.GetConfig(databaseID)
-	if !exists {
-		utils.GlobalLogger.Error("getOrConnectMongo: 未找到数据库配置 [ID=%s]", databaseID)
-		return nil, fmt.Errorf("未找到数据库配置: %s", databaseID)
-	}
-
-	utils.GlobalLogger.Info("getOrConnectMongo: 创建新驱动 [ID=%s] [类型=%s]", databaseID, config.Type)
-	driver := mongodb.NewMongoDBDriver(config)
-
-	utils.GlobalLogger.Info("getOrConnectMongo: 开始连接...")
-	if err := driver.Connect(ctx); err != nil {
-		utils.GlobalLogger.Error("getOrConnectMongo: 连接失败: %s", err)
-		return nil, err
-	}
-
-	// 存储到pool manager
-	utils.GlobalLogger.Info("getOrConnectMongo: 连接成功，存储到PoolManager")
-	poolManager.SetMongoDriver(databaseID, driver)
-	return driver, nil
 }

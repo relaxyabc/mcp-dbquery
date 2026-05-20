@@ -12,6 +12,13 @@ import (
 	"github.com/relaxyabc/mcp-dbquery/src/utils"
 )
 
+// init() 自动注册 SQL Server 騱动到全局注册表
+func init() {
+	database.RegisterDriver(database.DatabaseTypeSQLServer, func(config database.DatabaseConfig) database.Database {
+		return NewSQLServerDriver(config)
+	})
+}
+
 // SQLServerDriver SQL Server数据库驱动实现
 type SQLServerDriver struct {
 	ID     string

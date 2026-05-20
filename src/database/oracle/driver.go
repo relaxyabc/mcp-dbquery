@@ -12,6 +12,13 @@ import (
 	"github.com/relaxyabc/mcp-dbquery/src/utils"
 )
 
+// init() 自动注册 Oracle 騱动到全局注册表
+func init() {
+	database.RegisterDriver(database.DatabaseTypeOracle, func(config database.DatabaseConfig) database.Database {
+		return NewOracleDriver(config)
+	})
+}
+
 // OracleDriver Oracle数据库驱动实现
 type OracleDriver struct {
 	ID     string

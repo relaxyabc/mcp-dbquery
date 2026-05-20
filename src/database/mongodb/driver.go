@@ -15,6 +15,13 @@ import (
 	"github.com/relaxyabc/mcp-dbquery/src/utils"
 )
 
+// init() 自动注册 MongoDB 驱动到全局注册表
+func init() {
+	database.RegisterDriver(database.DatabaseTypeMongoDB, func(config database.DatabaseConfig) database.Database {
+		return NewMongoDBDriver(config)
+	})
+}
+
 // MongoDBDriver MongoDB数据库驱动实现
 type MongoDBDriver struct {
 	ID     string
