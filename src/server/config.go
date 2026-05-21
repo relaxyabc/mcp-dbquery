@@ -313,10 +313,8 @@ func (cl *ConfigLoader) Reload() (*Config, error) {
 
 // getEncryptionKeyByPriority 按优先级获取加密密钥
 // 优先级: 命令行 > 配置文件密钥 > 配置文件密钥文件 > 环境变量
+// 注意: 此函数在 Load() 内调用，Load 已持有锁，无需再次获取
 func (cl *ConfigLoader) getEncryptionKeyByPriority(config *Config) (string, string) {
-	cl.mu.RLock()
-	defer cl.mu.RUnlock()
-
 	// 优先级 1: 命令行直接传入密钥
 	if cl.cliKey != "" {
 		return cl.cliKey, "cli-key"
