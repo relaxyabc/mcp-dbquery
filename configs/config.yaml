@@ -5,6 +5,9 @@ server:
   host: 0.0.0.0     # HTTP listen host (only used for http transport)
   port: 8080        # HTTP listen port (only used for http transport)
   api_key: ${API_KEY}  # API key for HTTP transport (min 32 chars, ignored for stdio)
+  # Encryption key configuration (priority: cli-key > cli-key-file > config-key > config-key-file > env)
+  # encryption_key: yourSecretKey          # Direct key in config (optional)
+  # encryption_key_file: /path/to/key.txt  # Key file path (optional)
 
 logging:
   level: info
