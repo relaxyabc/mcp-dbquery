@@ -11,6 +11,7 @@
 - **连接池管理**: 多数据库连接池复用
 - **安全日志**: 密码自动掩码为 `[REDACTED]`
 - **API Key 认证**: HTTP 模式支持 API Key 认证
+- **密码加密**: 配置文件密码支持加密存储，CLI 工具加密/解密
 
 ## 支持的数据库
 
@@ -59,6 +60,89 @@ make build        # Linux/Mac: 输出到 bin/db-tools
 make build-win    # Windows: 输出到 bin/db-tools.exe
 ```
 
+## 密码加密
+
+为增强安全性，配置文件中的数据库密码可以使用加密格式存储。
+
+### 加密算法
+
+使用 PBEWithMD5AndDES (PKCS#5 v1.5) 算法，密文格式为：
+
+```
+enc:v1:<base64(salt+ciphertext)>
+```
+
+### CLI 加密命令
+
+**密钥优先级**: 命令行 > 配置文件 > 环境变量
+
+| 来源 | 参数/配置 | 优先级 |
+|------|-----------|--------|
+| 命令行密钥 | `--key <密钥>` | 最高 |
+| 命令行密钥文件 | `--key-file <路径>` | 高 |
+| 配置文件密钥 | `encryption_key: <密钥>` | 中 |
+| 配置文件密钥文件 | `encryption_key_file: <路径>` | 低 |
+| 环境变量 | `DBQUERY_ENCRYPTION_KEY` | 最低 |
+
+**加密密码**:
+```bash
+# 使用环境变量密钥
+export DBQUERY_ENCRYPTION_KEY="yourSecretKey123"
+./bin/db-tools encrypt mySecretPassword
+# 输出: enc:v1:U2FsdGVkX1+abc123def456=
+
+# 使用命令行密钥（优先级最高）
+./bin/db-tools encrypt mySecretPassword --key myCustomKey
+
+# 或使用密钥文件
+./bin/db-tools encrypt mySecretPassword --key-file /path/to/key.txt
+```
+
+**解密验证**:
+```bash
+./bin/db-tools decrypt "enc:v1:U2FsdGVkX1+abc123def456="
+# 输出: mySecretPassword
+```
+
+**服务启动时指定密钥**:
+```bash
+# 命令行密钥
+./bin/db-tools --key yourSecretKey
+
+# 命令行密钥文件
+./bin/db-tools --key-file /path/to/key.txt
+```
+
+### 配置文件使用加密密码
+
+将加密后的密文写入配置文件：
+
+```yaml
+server:
+  transport: stdio
+  # 加密密钥配置（可选，优先级低于命令行）
+  encryption_key: yourSecretKey           # 配置文件密钥
+  encryption_key_file: /path/to/key.txt   # 配置文件密钥文件
+
+databases:
+  mysql-primary:
+    type: mysql
+    host: localhost
+    port: 3306
+    username: root
+    password: enc:v1:U2FsdGVkX1+abc123def456=  # 加密密码
+    database: mydb
+```
+
+服务启动时会自动解密加密密码并连接数据库。
+
+### 安全说明
+
+- 加密密钥优先级: 命令行 `--key` > 命令行 `--key-file` > 配置文件 `encryption_key` > 配置文件 `encryption_key_file` > 环境变量 `DBQUERY_ENCRYPTION_KEY`
+- 明文密码仍支持（向后兼容），但会发出警告
+- 日志中密码始终显示为 `[ENCRYPTED]` 或 `[REDACTED]`
+- PBEWithMD5AndDES 是兼容性算法，建议在生产环境使用更安全的密钥管理方案
+
 ## 配置
 
 配置文件位于 `configs/config.yaml`：
@@ -69,6 +153,9 @@ server:
   host: 0.0.0.0
   port: 8080
   api_key: ${API_KEY}  # HTTP 模式需要，至少 32 字符
+  # 加密密钥配置（可选，优先级低于命令行）
+  # encryption_key: yourSecretKey           # 配置文件密钥
+  # encryption_key_file: /path/to/key.txt   # 配置文件密钥文件
 
 databases:
   mysql-primary:
@@ -119,6 +206,7 @@ export MYSQL_USER=root
 export MYSQL_PASSWORD=your_password
 export MYSQL_DATABASE=your_database
 export API_KEY=your_32_char_api_key  # HTTP 模式需要
+export DBQUERY_ENCRYPTION_KEY=yourSecretKey  # 加密密码解密密钥
 ```
 
 ## MCP 使用示例

@@ -54,6 +54,20 @@ func main() {
 				Value:   "stdio",
 				Usage:   "传输模式: stdio/s 或 http/h",
 			},
+			&cli.StringFlag{
+				Name:    "key",
+				Aliases: []string{"k"},
+				Usage:   "加密密钥（优先级最高，用于解密配置中的加密密码）",
+			},
+			&cli.StringFlag{
+				Name:    "key-file",
+				Aliases: []string{"f"},
+				Usage:   "加密密钥文件路径（优先级次高）",
+			},
+		},
+		Commands: []*cli.Command{
+			encryptCommand(),
+			decryptCommand(),
 		},
 		Action: runApp,
 	}
@@ -69,12 +83,23 @@ func runApp(ctx context.Context, cmd *cli.Command) error {
 	// 获取参数
 	configPath := cmd.String("config")
 	transportParam := cmd.String("transport")
+	cliKey := cmd.String("key")
+	cliKeyFile := cmd.String("key-file")
 
 	// 规范化传输模式
 	transportMode := normalizeTransport(transportParam)
 
 	// 加载配置
 	configLoader := server.NewConfigLoader(configPath)
+
+	// 设置命令行传入的加密密钥（优先级最高）
+	if cliKey != "" {
+		configLoader.SetCLIKey(cliKey)
+	}
+	if cliKeyFile != "" {
+		configLoader.SetCLIKeyFile(cliKeyFile)
+	}
+
 	config, err := configLoader.Load()
 
 	// STDIO模式：禁止任何stdout输出（只允许MCP JSON-RPC）
