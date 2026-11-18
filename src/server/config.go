@@ -55,6 +55,7 @@ type DatabaseConfigWrapper struct {
 	TLSEnabled    bool   `yaml:"tls_enabled"`    // 是否启用TLS
 	PoolSize      int    `yaml:"pool_size"`      // 连接池大小
 	Timeout       int    `yaml:"timeout"`        // 超时时间（秒）
+	ConnectTimeout int   `yaml:"connect_timeout"` // 拨号连接超时（秒，默认5）
 	AuthSource    string `yaml:"auth_source"`    // MongoDB认证源数据库
 	AuthMechanism string `yaml:"auth_mechanism"` // MongoDB认证机制
 	ReplicaSet    string `yaml:"replica_set"`    // MongoDB副本集名称
@@ -263,6 +264,9 @@ func (cl *ConfigLoader) setDefaults(config *Config) {
 		if dbConfig.Timeout == 0 {
 			dbConfig.Timeout = 30
 		}
+		if dbConfig.ConnectTimeout == 0 {
+			dbConfig.ConnectTimeout = 5
+		}
 		config.Databases[id] = dbConfig
 	}
 }
@@ -290,6 +294,7 @@ func (cl *ConfigLoader) GetDatabaseConfigs() map[string]database.DatabaseConfig 
 			TLSEnabled:    wrapper.TLSEnabled,
 			PoolSize:      wrapper.PoolSize,
 			Timeout:       wrapper.Timeout,
+			ConnectTimeout: wrapper.ConnectTimeout,
 			AuthSource:    wrapper.AuthSource,
 			AuthMechanism: wrapper.AuthMechanism,
 			ReplicaSet:    wrapper.ReplicaSet,

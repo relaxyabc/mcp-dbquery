@@ -81,7 +81,8 @@ type DatabaseConfig struct {
 	Path             string       `yaml:"path"`             // SQLite文件路径（仅SQLite使用）
 	TLSEnabled       bool         `yaml:"tls_enabled"`      // 是否启用TLS连接
 	PoolSize         int          `yaml:"pool_size"`        // 连接池大小
-	Timeout          int          `yaml:"timeout"`          // 连接超时时间（秒）
+	Timeout          int          `yaml:"timeout"`          // 连接池生命周期/读写超时（秒）
+	ConnectTimeout   int          `yaml:"connect_timeout"`  // 拨号连接超时（秒，默认5）：网络未就绪时快速失败，避免长时间阻塞
 	AuthSource       string       `yaml:"auth_source"`      // MongoDB认证源数据库（默认admin）
 	AuthMechanism    string       `yaml:"auth_mechanism"`   // MongoDB认证机制（SCRAM-SHA-1/SCRAM-SHA-256）
 	ReplicaSet       string       `yaml:"replica_set"`      // MongoDB副本集名称

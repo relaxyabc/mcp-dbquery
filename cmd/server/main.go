@@ -142,14 +142,12 @@ func runApp(ctx context.Context, cmd *cli.Command) error {
 			id, dbConfig.Type, dbConfig.Host, dbConfig.Port)
 	}
 
-	// 连接所有数据库（启动时验证连接）
-	utils.GlobalLogger.Info("开始连接所有数据库...")
-	connectErrors := connectAllDatabases(ctx, poolManager, dbConfigs)
-	for id, err := range connectErrors {
-		utils.GlobalLogger.Error("数据库连接失败 [ID=%s]: %s", id, err)
-	}
-	utils.GlobalLogger.Info("数据库连接完成 [成功=%d] [失败=%d]",
-		len(dbConfigs)-len(connectErrors), len(connectErrors))
+	// 后台恢复监测：首轮立即执行（兼作启动预热，不阻塞MCP启动），
+	// 此后每 10s 一轮，仅当存在失败记录时对未连接的数据库并行重连；
+	// 全部恢复后转入休眠（不再周期性探测），新失败由下一轮检测自动覆盖
+	utils.GlobalLogger.Info("启动后台数据库恢复监测（不阻塞MCP启动）...")
+	recoveryCtx, recoveryCancel := context.WithCancel(ctx)
+	poolManager.StartRecoveryMonitor(recoveryCtx, 10*time.Second)
 
 	// HTTP模式需要认证管理器
 	var authManager *server.AuthManager
@@ -171,13 +169,13 @@ func runApp(ctx context.Context, cmd *cli.Command) error {
 	if transportMode == server.TransportModeStdio {
 		// STDIO模式：直接运行，不需要HTTP服务器
 		utils.GlobalLogger.Info("以STDIO模式运行 (Claude CLI集成)")
-		runSTDIOMode(ctx, poolManager, mcpServer)
+		runSTDIOMode(ctx, recoveryCancel, poolManager, mcpServer)
 	} else {
 		// HTTP模式：创建HTTP服务器
 		utils.GlobalLogger.Info("以HTTP模式运行 (VS Code MCP集成)")
 		httpServer := createHTTPServer(config, poolManager, authManager, mcpServer)
 		startServer(httpServer, config.Server.Host, config.Server.Port)
-		waitForShutdown(httpServer, poolManager)
+		waitForShutdown(httpServer, recoveryCancel, poolManager)
 	}
 
 	utils.GlobalLogger.Info("服务器已停止")
@@ -198,7 +196,7 @@ func normalizeTransport(value string) server.TransportMode {
 }
 
 // runSTDIOMode 以STDIO模式运行服务器
-func runSTDIOMode(ctx context.Context, poolManager *database.PoolManager, mcpServer *mcp.MCPServer) {
+func runSTDIOMode(ctx context.Context, recoveryCancel context.CancelFunc, poolManager *database.PoolManager, mcpServer *mcp.MCPServer) {
 	// STDIO模式不需要认证中间件
 	// 子进程由MCP客户端启动，隐式信任
 
@@ -208,29 +206,14 @@ func runSTDIOMode(ctx context.Context, poolManager *database.PoolManager, mcpSer
 		os.Exit(1)
 	}
 
+	// 停止后台恢复监测，避免监测 goroutine 与连接池清理产生竞态
+	recoveryCancel()
+
 	// STDIO关闭后，清理连接池
 	utils.GlobalLogger.Info("关闭所有数据库连接池...")
 	if err := poolManager.CloseAll(ctx); err != nil {
 		utils.GlobalLogger.Error("连接池关闭失败: %s", err)
 	}
-}
-
-// connectAllDatabases 连接所有数据库（启动时验证）
-// 驱动已通过 init() 自注册到全局注册表，无需手动注册
-func connectAllDatabases(ctx context.Context, poolManager *database.PoolManager, dbConfigs map[string]database.DatabaseConfig) map[string]error {
-	errors := make(map[string]error)
-
-	for id, config := range dbConfigs {
-		// 使用全局注册表获取驱动
-		_, err := poolManager.GetOrCreatePool(ctx, id)
-		if err != nil {
-			errors[id] = err
-		} else {
-			utils.GlobalLogger.Info("数据库连接成功 [ID=%s] [类型=%s]", id, config.Type)
-		}
-	}
-
-	return errors
 }
 
 // createHTTPServer 创建HTTP服务器
@@ -352,7 +335,7 @@ func handleOAuthRegister(w http.ResponseWriter, r *http.Request) {
 
 // waitForShutdown 等待关闭信号并优雅关闭
 // 宪章要求FR-021：优雅关闭，最多30秒等待正在处理的请求
-func waitForShutdown(srv *http.Server, poolManager *database.PoolManager) {
+func waitForShutdown(srv *http.Server, recoveryCancel context.CancelFunc, poolManager *database.PoolManager) {
 	// 创建信号通道
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
@@ -370,6 +353,9 @@ func waitForShutdown(srv *http.Server, poolManager *database.PoolManager) {
 	if err := srv.Shutdown(ctx); err != nil {
 		utils.GlobalLogger.Error("HTTP服务器关闭失败: %s", err)
 	}
+
+	// 停止后台恢复监测，避免监测 goroutine 与连接池清理产生竞态
+	recoveryCancel()
 
 	// 关闭所有数据库连接池
 	utils.GlobalLogger.Info("关闭所有数据库连接池...")

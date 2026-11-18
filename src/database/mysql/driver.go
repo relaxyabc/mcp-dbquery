@@ -94,8 +94,17 @@ func (d *MySQLDriver) Connect(ctx context.Context) error {
 	db.SetMaxIdleConns(d.Config.PoolSize)
 	db.SetConnMaxLifetime(time.Duration(d.Config.Timeout) * time.Second)
 
+	// 连接测试强制限时：网络未就绪时快速失败，不阻塞调用方
+	// 拨号阶段由 DSN 的 timeout 参数约束，此处再以 connect_timeout 兜底约束整个握手过程
+	connectTimeout := time.Duration(d.Config.ConnectTimeout) * time.Second
+	if connectTimeout <= 0 {
+		connectTimeout = database.DefaultConnectTimeout
+	}
+	connectCtx, cancel := context.WithTimeout(ctx, connectTimeout)
+	defer cancel()
+
 	// 测试连接
-	if err := db.PingContext(ctx); err != nil {
+	if err := db.PingContext(connectCtx); err != nil {
 		d.State = database.StateError
 		utils.GlobalLogger.LogError("CONNECTION_ERROR", "MySQL连接测试失败", err.Error())
 		return fmt.Errorf("MySQL连接测试失败: %s", err)
@@ -239,16 +248,28 @@ func (d *MySQLDriver) ValidateQuery(query string) error {
 }
 
 // buildConnectionString 构建MySQL连接字符串（内部使用）
+// timeout 参数约束 TCP 拨号阶段（默认 connect_timeout=5s），防止网络未就绪时长时间阻塞；
+// readTimeout/writeTimeout 跟随 timeout 配置，须大于查询耗时上限（query_timeout 默认30s）
 func (d *MySQLDriver) buildConnectionString() string {
-	tlsParam := ""
-	if d.Config.TLSEnabled {
-		tlsParam = "?tls=true"
+	connectTimeout := d.Config.ConnectTimeout
+	if connectTimeout <= 0 {
+		connectTimeout = int(database.DefaultConnectTimeout / time.Second)
+	}
+	readWriteTimeout := d.Config.Timeout
+	if readWriteTimeout <= 0 {
+		readWriteTimeout = 30
 	}
 
-	return fmt.Sprintf("%s:%s@tcp(%s:%d)/%s%s",
+	params := fmt.Sprintf("timeout=%ds&readTimeout=%ds&writeTimeout=%ds",
+		connectTimeout, readWriteTimeout, readWriteTimeout)
+	if d.Config.TLSEnabled {
+		params += "&tls=true"
+	}
+
+	return fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?%s",
 		d.Config.Username, d.Config.Password,
 		d.Config.Host, d.Config.Port,
-		d.Config.Database, tlsParam)
+		d.Config.Database, params)
 }
 
 // GetMaskedConnectionString 获取遮蔽密码的连接字符串（日志使用）

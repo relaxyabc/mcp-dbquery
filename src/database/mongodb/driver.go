@@ -59,8 +59,12 @@ func (d *MongoDBDriver) Connect(ctx context.Context) error {
 		d.ID, d.Config.Username, d.Config.Host, d.Config.Port, d.Config.Database)
 
 	// 强制使用带超时的上下文，防止连接卡住
-	// 即使传入的 ctx 没有超时，也要确保最多 30 秒
-	connectCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	// 超时取配置的 connect_timeout（默认5秒）：网络未就绪时快速失败，不长时间阻塞调用方
+	connectTimeout := time.Duration(d.Config.ConnectTimeout) * time.Second
+	if connectTimeout <= 0 {
+		connectTimeout = database.DefaultConnectTimeout
+	}
+	connectCtx, cancel := context.WithTimeout(ctx, connectTimeout)
 	defer cancel()
 
 	// 构建连接选项
@@ -69,8 +73,8 @@ func (d *MongoDBDriver) Connect(ctx context.Context) error {
 		SetMaxPoolSize(uint64(d.Config.PoolSize)).
 		SetMinPoolSize(1).
 		SetMaxConnIdleTime(10 * time.Minute).
-		SetConnectTimeout(10 * time.Second).
-		SetServerSelectionTimeout(10 * time.Second)
+		SetConnectTimeout(connectTimeout).
+		SetServerSelectionTimeout(connectTimeout)
 
 	// 创建客户端
 	utils.GlobalLogger.Info("MongoDB正在建立连接...")

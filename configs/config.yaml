@@ -25,6 +25,7 @@ databases:
     tls_enabled: false
     pool_size: 5
     timeout: 30
+    connect_timeout: 3  # 拨号连接超时（秒，默认5）；网络未就绪时快速失败，避免阻塞 MCP 启动与工具调用
 
   # Example PostgreSQL connection
   postgres-analytics:
@@ -36,6 +37,7 @@ databases:
     database: ${PG_DATABASE}
     pool_size: 10
     timeout: 30
+    connect_timeout: 3  # 拨号连接超时（秒，默认5）；网络未就绪时快速失败，避免阻塞 MCP 启动与工具调用
 
   # Example SQLite connection (file-based)
   sqlite-local:
